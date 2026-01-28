@@ -1,3 +1,9 @@
+# IDE and OS files
+.idea/
+.DS_Store
+.metadata
+*.iml
+
 # Miscellaneous
 *.class
 *.lock
