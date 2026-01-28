@@ -178,24 +178,20 @@ class SettingsService {
     await prefs.setString(_themeKey, theme.name);
   }
 
-  // Common speech locales with display names
+  // English speech locales with regional accents
   final Map<String, String> speechLocales = {
+    'en_IN': 'English (India)',
     'en_US': 'English (US)',
     'en_GB': 'English (UK)',
-    'en_IN': 'English (India)',
     'en_AU': 'English (Australia)',
-    'hi_IN': 'Hindi',
-    'es_ES': 'Spanish (Spain)',
-    'es_MX': 'Spanish (Mexico)',
-    'fr_FR': 'French',
-    'de_DE': 'German',
-    'it_IT': 'Italian',
-    'pt_BR': 'Portuguese (Brazil)',
-    'ja_JP': 'Japanese',
-    'zh_CN': 'Chinese (Simplified)',
-    'ko_KR': 'Korean',
-    'ar_SA': 'Arabic',
-    'ru_RU': 'Russian',
+    'en_CA': 'English (Canada)',
+    'en_NZ': 'English (New Zealand)',
+    'en_ZA': 'English (South Africa)',
+    'en_IE': 'English (Ireland)',
+    'en_SG': 'English (Singapore)',
+    'en_PH': 'English (Philippines)',
+    'en_KE': 'English (Kenya)',
+    'en_NG': 'English (Nigeria)',
   };
 
   Future<String?> getSpeechLocale() async {
@@ -216,33 +212,31 @@ class SettingsService {
     final timezone = DateTime.now().timeZoneName;
     final offset = DateTime.now().timeZoneOffset;
 
-    // Detect based on timezone offset and name
+    // Detect English variant based on timezone
     if (timezone.contains('IST') || (offset.inHours == 5 && offset.inMinutes == 30)) {
-      return 'en_IN'; // English (India)
+      return 'en_IN'; // India
     } else if (timezone.contains('GMT') || timezone.contains('BST')) {
-      return 'en_GB'; // English (UK)
-    } else if (timezone.contains('JST') || offset.inHours == 9) {
-      return 'ja_JP'; // Japanese
-    } else if (offset.inHours >= -5 && offset.inHours <= -4) {
-      return 'en_US'; // Eastern US
-    } else if (offset.inHours >= -8 && offset.inHours <= -7) {
-      return 'en_US'; // Pacific US
+      return 'en_GB'; // UK
     } else if (offset.inHours == 10 || offset.inHours == 11) {
       return 'en_AU'; // Australia
-    } else if (timezone.contains('CET') || timezone.contains('CEST')) {
-      return 'de_DE'; // German (Central Europe)
-    } else if (offset.inHours == 8) {
-      return 'zh_CN'; // China
-    } else if (offset.inHours == 9 && !timezone.contains('JST')) {
-      return 'ko_KR'; // Korea
-    } else if (offset.inHours == 3) {
-      return 'ar_SA'; // Arabic (Saudi Arabia)
-    } else if (offset.inHours == 3 || offset.inHours == 4) {
-      return 'ru_RU'; // Russia
-    } else if (offset.inHours == -3) {
-      return 'pt_BR'; // Brazil
-    } else if (offset.inHours >= -6 && offset.inHours <= -5) {
-      return 'es_MX'; // Mexico
+    } else if (offset.inHours == 12 || offset.inHours == 13) {
+      return 'en_NZ'; // New Zealand
+    } else if (offset.inHours == 8 && timezone.contains('SGT')) {
+      return 'en_SG'; // Singapore
+    } else if (offset.inHours == 8 && timezone.contains('PHT')) {
+      return 'en_PH'; // Philippines
+    } else if (offset.inHours == 2) {
+      return 'en_ZA'; // South Africa
+    } else if (offset.inHours == 3 && timezone.contains('EAT')) {
+      return 'en_KE'; // Kenya
+    } else if (offset.inHours == 1 && timezone.contains('WAT')) {
+      return 'en_NG'; // Nigeria
+    } else if (timezone.contains('IST') && offset.inHours == 0) {
+      return 'en_IE'; // Ireland
+    } else if (offset.inHours >= -5 && offset.inHours <= -4) {
+      return 'en_US'; // Eastern US / Canada
+    } else if (offset.inHours >= -8 && offset.inHours <= -7) {
+      return 'en_US'; // Pacific US / Canada
     }
 
     return 'en_US'; // Default to US English
