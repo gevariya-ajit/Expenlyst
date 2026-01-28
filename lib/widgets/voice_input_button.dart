@@ -231,8 +231,8 @@ class VoiceInputButtonState extends State<VoiceInputButton>
           _finishListening(newWords);
         }
       },
-      listenFor: const Duration(seconds: 15),
-      pauseFor: const Duration(seconds: 2),
+      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(seconds: 4),
       listenOptions: stt.SpeechListenOptions(
         partialResults: true,
         listenMode: stt.ListenMode.dictation,
@@ -248,9 +248,9 @@ class VoiceInputButtonState extends State<VoiceInputButton>
     final hasNumber = RegExp(r'\d+').hasMatch(text);
     if (!hasNumber) return false;
 
-    // Check if text has been stable for at least 1.2 seconds
+    // Check if text has been stable for at least 2 seconds
     final timeSinceChange = DateTime.now().difference(_lastChangeTime!);
-    if (timeSinceChange.inMilliseconds < 1200) return false;
+    if (timeSinceChange.inMilliseconds < 2000) return false;
 
     // Additional check: stable word count indicates no changes
     return _stableWordCount >= 2;
