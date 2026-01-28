@@ -27,6 +27,7 @@ class SheetsService {
     'tickerSinceAddUpdate',
     'isDeleted',
     'deviceId',
+    'archivedAt',
   ];
 
   /// Create a new Expenlyst spreadsheet
@@ -56,7 +57,7 @@ class SheetsService {
         await sheetsApi.spreadsheets.values.update(
           sheets.ValueRange(values: [_headerRow]),
           spreadsheetId,
-          '$_sheetName!A1:H1',
+          '$_sheetName!A1:I1',
           valueInputOption: 'RAW',
         );
       }
@@ -104,7 +105,7 @@ class SheetsService {
 
       final response = await sheetsApi.spreadsheets.values.get(
         spreadsheetId,
-        '$_sheetName!A2:H',
+        '$_sheetName!A2:I',
       );
 
       final values = response.values;
@@ -149,7 +150,7 @@ class SheetsService {
         await sheetsApi.spreadsheets.values.update(
           sheets.ValueRange(values: [_headerRow]),
           spreadsheetId,
-          '$_sheetName!A1:H1',
+          '$_sheetName!A1:I1',
           valueInputOption: 'RAW',
         );
       }
@@ -183,7 +184,7 @@ class SheetsService {
       try {
         existingData = await sheetsApi.spreadsheets.values.get(
           spreadsheetId,
-          '$_sheetName!A2:H',
+          '$_sheetName!A2:I',
         );
       } catch (e) {
         debugPrint('No existing data found (this is OK for new sheets): $e');
@@ -218,7 +219,7 @@ class SheetsService {
       for (final entry in toUpdate.entries) {
         final rowIndex = entry.key;
         final expense = entry.value;
-        final range = '$_sheetName!A$rowIndex:H$rowIndex';
+        final range = '$_sheetName!A$rowIndex:I$rowIndex';
 
         await sheetsApi.spreadsheets.values.update(
           sheets.ValueRange(values: [expense.toSheetRow()]),
@@ -234,7 +235,7 @@ class SheetsService {
         await sheetsApi.spreadsheets.values.append(
           sheets.ValueRange(values: appendValues),
           spreadsheetId,
-          '$_sheetName!A:H',
+          '$_sheetName!A:I',
           valueInputOption: 'RAW',
           insertDataOption: 'INSERT_ROWS',
         );

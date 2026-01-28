@@ -71,6 +71,7 @@ class Expense {
       tickerSinceAddUpdate?.toIso8601String() ?? '',
       isDeleted ? 'TRUE' : 'FALSE',
       deviceId ?? '',
+      archivedAt?.toIso8601String() ?? '',
     ];
   }
 
@@ -87,6 +88,9 @@ class Expense {
           : null,
       isDeleted: row.length > 6 && row[6]?.toString().toUpperCase() == 'TRUE',
       deviceId: row.length > 7 ? row[7]?.toString() : null,
+      archivedAt: row.length > 8 && row[8] != null && row[8].toString().isNotEmpty
+          ? DateTime.tryParse(row[8].toString())
+          : null,
     );
   }
 

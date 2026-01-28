@@ -301,9 +301,113 @@ class VoiceInputButtonState extends State<VoiceInputButton>
     }
   }
 
+  // Command phrases for archiving last expense
+  static const List<String> _archiveLastCommands = [
+    // Remove variations
+    'remove last', 'remove last item', 'remove last expense', 'remove last entry',
+    'remove the last', 'remove the last item', 'remove the last expense', 'remove the last entry',
+    'remove previous', 'remove previous item', 'remove previous expense',
+    // Delete variations
+    'delete last', 'delete last item', 'delete last expense', 'delete last entry',
+    'delete the last', 'delete the last item', 'delete the last expense', 'delete the last entry',
+    'delete previous', 'delete previous item', 'delete previous expense',
+    // Drop variations
+    'drop last', 'drop last item', 'drop last expense', 'drop last entry',
+    'drop the last', 'drop the last item', 'drop the last expense', 'drop the last entry',
+    // Cancel variations
+    'cancel last', 'cancel last item', 'cancel last expense', 'cancel last entry',
+    'cancel the last', 'cancel the last item', 'cancel the last expense',
+    // Undo variations
+    'undo', 'undo last', 'undo last item', 'undo last expense', 'undo that',
+    // Short forms
+    'remove it', 'delete it', 'drop it', 'cancel it', 'take it back',
+    'never mind', 'nevermind', 'scratch that', 'forget it', 'forget that',
+  ];
+
+  /// Check if text is a command to archive last expense (with fuzzy matching)
+  bool _isArchiveLastCommand(String text) {
+    final lowerText = text.toLowerCase().trim();
+
+    // First check exact match or contains
+    if (_archiveLastCommands.any((cmd) => lowerText == cmd || lowerText.contains(cmd))) {
+      return true;
+    }
+
+    // Then check fuzzy match for minor errors
+    const double threshold = 0.75;
+    for (final cmd in _archiveLastCommands) {
+      if (_similarity(lowerText, cmd) >= threshold) {
+        return true;
+      }
+      // Also check if any part of the text matches the command
+      final words = lowerText.split(RegExp(r'\s+'));
+      if (words.length >= 2) {
+        // Check pairs of consecutive words
+        for (int i = 0; i < words.length - 1; i++) {
+          final phrase = '${words[i]} ${words[i + 1]}';
+          if (_similarity(phrase, cmd) >= threshold) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /// Archive the last expense
+  Future<void> _archiveLastExpense() async {
+    final expenseProvider = context.read<ExpenseProvider>();
+    final expenses = expenseProvider.selectedDateExpenses;
+
+    if (expenses.isEmpty) {
+      _showSnackBar('No expenses to remove');
+      return;
+    }
+
+    // Get the most recent expense (first in list since sorted DESC)
+    final lastExpense = expenses.first;
+    final expenseId = lastExpense.id!;
+
+    await expenseProvider.archiveExpense(expenseId);
+
+    _showSnackBarWithUndo(
+      'Removed: ${lastExpense.label} - ${lastExpense.amount.toStringAsFixed(0)}',
+      expenseId,
+    );
+  }
+
+  /// Show snackbar with undo action for restoring archived expense
+  void _showSnackBarWithUndo(String message, int expenseId) {
+    // Capture provider reference before showing snackbar
+    final expenseProvider = context.read<ExpenseProvider>();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 10),
+        action: SnackBarAction(
+          label: 'Undo',
+          textColor: Colors.yellow,
+          onPressed: () async {
+            debugPrint('Restoring expense with ID: $expenseId');
+            await expenseProvider.restoreExpense(expenseId);
+            _showSnackBar('Restored');
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _processVoiceInput(String text) async {
     if (text.isEmpty) {
       _showSnackBar('No speech detected');
+      return;
+    }
+
+    // Check for commands first
+    if (_isArchiveLastCommand(text)) {
+      await _archiveLastExpense();
       return;
     }
 
