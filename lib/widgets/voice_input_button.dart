@@ -455,6 +455,27 @@ class VoiceInputButtonState extends State<VoiceInputButton>
     _showSnackBar(statusMsg);
   }
 
+  // Words that indicate category but should not be part of the label
+  static const List<String> _categoryIndicatorWords = [
+    // Payment related
+    'bill', 'bills', 'payment', 'payments', 'paid', 'pay',
+    'recharge', 'recharged', 'top', 'up', 'topup',
+    // Order related
+    'order', 'ordered', 'delivery', 'delivered',
+    // Purchase related
+    'bought', 'buy', 'purchase', 'purchased', 'shopping',
+    // Service related
+    'service', 'serviced', 'repair', 'repaired', 'maintenance',
+    // Travel related
+    'ride', 'trip', 'travel', 'fare', 'booking', 'booked',
+    // Food related
+    'food', 'meal', 'lunch', 'dinner', 'breakfast', 'snack',
+    // Common suffixes
+    'expense', 'expenses', 'cost', 'charge', 'charges', 'fee', 'fees',
+    // Prepositions often used
+    'for', 'from', 'to', 'at', 'on', 'in', 'the', 'a', 'an',
+  ];
+
   Map<String, String> _parseExpense(String text) {
     final lowerText = text.toLowerCase();
     final words = lowerText.split(RegExp(r'\s+'));
@@ -475,17 +496,24 @@ class VoiceInputButtonState extends State<VoiceInputButton>
       }
     }
 
+    // Detect category FIRST based on the full text (before removing words)
+    String category = _detectCategory(lowerText, '');
+
     // Create a mutable list for processing
     List<String> labelWords = List.from(words);
 
     // Remove amount and currency words from label
     if (amountIndex != -1) {
       labelWords.removeAt(amountIndex);
-      // Also remove currency words if present
-      labelWords.removeWhere((w) =>
-        w == 'dollars' || w == 'dollar' || w == 'rupees' || w == 'rupee' ||
-        w == 'rs' || w == 'inr' || w == 'usd' || w == '\$' || w == 'rs.');
     }
+
+    // Remove currency words
+    labelWords.removeWhere((w) =>
+      w == 'dollars' || w == 'dollar' || w == 'rupees' || w == 'rupee' ||
+      w == 'rs' || w == 'inr' || w == 'usd' || w == '\$' || w == 'rs.');
+
+    // Remove category indicator words from label
+    labelWords.removeWhere((w) => _categoryIndicatorWords.contains(w));
 
     // Build label from remaining words
     String label = labelWords.where((w) => w.isNotEmpty).join(' ').trim();
@@ -498,8 +526,10 @@ class VoiceInputButtonState extends State<VoiceInputButton>
     // Capitalize first letter of each word
     label = _capitalizeWords(label);
 
-    // Detect category based on the full text and label
-    String category = _detectCategory(lowerText, label.toLowerCase());
+    // If category wasn't detected from keywords, try detecting from the cleaned label
+    if (category == 'Miscellaneous') {
+      category = _detectCategory(lowerText, label.toLowerCase());
+    }
 
     // If no amount found, default to 0 (user can edit later)
     amount ??= '0';
