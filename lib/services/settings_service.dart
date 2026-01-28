@@ -198,8 +198,8 @@ class SettingsService {
     final prefs = await SharedPreferences.getInstance();
     final savedLocale = prefs.getString(_speechLocaleKey);
 
-    // If no saved locale, detect from timezone and save it
-    if (savedLocale == null) {
+    // If no saved locale or saved locale is not in current list, detect from timezone
+    if (savedLocale == null || !speechLocales.containsKey(savedLocale)) {
       final detectedLocale = _detectSpeechLocaleFromTimezone();
       await prefs.setString(_speechLocaleKey, detectedLocale);
       return detectedLocale;
