@@ -200,7 +200,52 @@ class SettingsService {
 
   Future<String?> getSpeechLocale() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_speechLocaleKey);
+    final savedLocale = prefs.getString(_speechLocaleKey);
+
+    // If no saved locale, detect from timezone and save it
+    if (savedLocale == null) {
+      final detectedLocale = _detectSpeechLocaleFromTimezone();
+      await prefs.setString(_speechLocaleKey, detectedLocale);
+      return detectedLocale;
+    }
+
+    return savedLocale;
+  }
+
+  String _detectSpeechLocaleFromTimezone() {
+    final timezone = DateTime.now().timeZoneName;
+    final offset = DateTime.now().timeZoneOffset;
+
+    // Detect based on timezone offset and name
+    if (timezone.contains('IST') || (offset.inHours == 5 && offset.inMinutes == 30)) {
+      return 'en_IN'; // English (India)
+    } else if (timezone.contains('GMT') || timezone.contains('BST')) {
+      return 'en_GB'; // English (UK)
+    } else if (timezone.contains('JST') || offset.inHours == 9) {
+      return 'ja_JP'; // Japanese
+    } else if (offset.inHours >= -5 && offset.inHours <= -4) {
+      return 'en_US'; // Eastern US
+    } else if (offset.inHours >= -8 && offset.inHours <= -7) {
+      return 'en_US'; // Pacific US
+    } else if (offset.inHours == 10 || offset.inHours == 11) {
+      return 'en_AU'; // Australia
+    } else if (timezone.contains('CET') || timezone.contains('CEST')) {
+      return 'de_DE'; // German (Central Europe)
+    } else if (offset.inHours == 8) {
+      return 'zh_CN'; // China
+    } else if (offset.inHours == 9 && !timezone.contains('JST')) {
+      return 'ko_KR'; // Korea
+    } else if (offset.inHours == 3) {
+      return 'ar_SA'; // Arabic (Saudi Arabia)
+    } else if (offset.inHours == 3 || offset.inHours == 4) {
+      return 'ru_RU'; // Russia
+    } else if (offset.inHours == -3) {
+      return 'pt_BR'; // Brazil
+    } else if (offset.inHours >= -6 && offset.inHours <= -5) {
+      return 'es_MX'; // Mexico
+    }
+
+    return 'en_US'; // Default to US English
   }
 
   Future<void> setSpeechLocale(String? localeId) async {
