@@ -86,6 +86,8 @@ class SettingsService {
   static const String _currencyKey = 'currency';
   static const String _isFirstLaunchKey = 'is_first_launch';
   static const String _themeKey = 'app_theme';
+  static const String _speechLocaleKey = 'speech_locale';
+  static const String _smartLabelMatchingKey = 'smart_label_matching';
 
   final Map<String, String> currencySymbols = {
     'USD': '\$',
@@ -174,5 +176,55 @@ class SettingsService {
   Future<void> setTheme(AppTheme theme) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_themeKey, theme.name);
+  }
+
+  // Common speech locales with display names
+  final Map<String, String> speechLocales = {
+    'en_US': 'English (US)',
+    'en_GB': 'English (UK)',
+    'en_IN': 'English (India)',
+    'en_AU': 'English (Australia)',
+    'hi_IN': 'Hindi',
+    'es_ES': 'Spanish (Spain)',
+    'es_MX': 'Spanish (Mexico)',
+    'fr_FR': 'French',
+    'de_DE': 'German',
+    'it_IT': 'Italian',
+    'pt_BR': 'Portuguese (Brazil)',
+    'ja_JP': 'Japanese',
+    'zh_CN': 'Chinese (Simplified)',
+    'ko_KR': 'Korean',
+    'ar_SA': 'Arabic',
+    'ru_RU': 'Russian',
+  };
+
+  Future<String?> getSpeechLocale() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_speechLocaleKey);
+  }
+
+  Future<void> setSpeechLocale(String? localeId) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (localeId == null) {
+      await prefs.remove(_speechLocaleKey);
+    } else {
+      await prefs.setString(_speechLocaleKey, localeId);
+    }
+  }
+
+  List<String> get supportedSpeechLocales => speechLocales.keys.toList();
+
+  String getSpeechLocaleDisplayName(String localeId) {
+    return speechLocales[localeId] ?? localeId;
+  }
+
+  Future<bool> getSmartLabelMatching() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_smartLabelMatchingKey) ?? true; // Enabled by default
+  }
+
+  Future<void> setSmartLabelMatching(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_smartLabelMatchingKey, enabled);
   }
 }

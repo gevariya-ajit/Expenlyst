@@ -383,4 +383,16 @@ class DatabaseService {
       whereArgs: [thirtyDaysAgo.toIso8601String()],
     );
   }
+
+  /// Get recent unique labels for smart label matching
+  Future<List<String>> getRecentLabels({int limit = 500}) async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT DISTINCT label FROM expenses
+      WHERE isDeleted = 0 AND archivedAt IS NULL
+      ORDER BY datetime DESC
+      LIMIT ?
+    ''', [limit]);
+    return maps.map((map) => map['label'] as String).toList();
+  }
 }

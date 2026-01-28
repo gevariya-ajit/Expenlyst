@@ -16,6 +16,7 @@ enum _SettingsSection {
   security,
   theme,
   currency,
+  speechLanguage,
   importData,
   about,
 }
@@ -494,6 +495,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: _buildCurrencyContent(settingsProvider),
               ),
 
+              // Speech Language Section
+              _ExpandableSettingsCard(
+                title: 'Speech Language',
+                subtitle: settingsProvider.speechLocale != null
+                    ? settingsProvider.getSpeechLocaleDisplayName(settingsProvider.speechLocale!)
+                    : 'Device default',
+                icon: Icons.mic,
+                isExpanded: _expandedSection == _SettingsSection.speechLanguage,
+                onTap: () => _toggleSection(_SettingsSection.speechLanguage),
+                child: _buildSpeechLanguageContent(settingsProvider),
+              ),
+
               // Import Section
               _ExpandableSettingsCard(
                 title: 'Import Data',
@@ -797,6 +810,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
           settingsProvider.setCurrency(value);
         }
       },
+    );
+  }
+
+  Widget _buildSpeechLanguageContent(SettingsProvider settingsProvider) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 20, color: Colors.blue[700]),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Select a language that matches your accent for better recognition.',
+                  style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        DropdownButtonFormField<String?>(
+          value: settingsProvider.speechLocale,
+          decoration: InputDecoration(
+            labelText: 'Speech Language',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          ),
+          items: [
+            const DropdownMenuItem<String?>(
+              value: null,
+              child: Text('Device default'),
+            ),
+            ...settingsProvider.supportedSpeechLocales.map((localeId) {
+              final name = settingsProvider.getSpeechLocaleDisplayName(localeId);
+              return DropdownMenuItem<String?>(
+                value: localeId,
+                child: Text(name),
+              );
+            }),
+          ],
+          onChanged: (value) {
+            settingsProvider.setSpeechLocale(value);
+          },
+        ),
+        const SizedBox(height: 20),
+        const Divider(),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Smart label matching',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Auto-correct labels based on your expense history',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            Switch(
+              value: settingsProvider.smartLabelMatching,
+              onChanged: (value) {
+                settingsProvider.setSmartLabelMatching(value);
+              },
+            ),
+          ],
+        ),
+      ],
     );
   }
 

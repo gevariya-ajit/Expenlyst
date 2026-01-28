@@ -7,11 +7,15 @@ class SettingsProvider with ChangeNotifier {
 
   String _currency = 'USD';
   AppTheme _theme = AppTheme.navyBlue;
+  String? _speechLocale;
+  bool _smartLabelMatching = true;
   bool _isLoading = true;
 
   String get currency => _currency;
   AppTheme get theme => _theme;
   ThemeData get themeData => _theme.toThemeData();
+  String? get speechLocale => _speechLocale;
+  bool get smartLabelMatching => _smartLabelMatching;
   bool get isLoading => _isLoading;
 
   String get currencySymbol => _settingsService.getSymbol(_currency);
@@ -21,6 +25,10 @@ class SettingsProvider with ChangeNotifier {
   List<String> get supportedCurrencies => _settingsService.supportedCurrencies;
   List<AppTheme> get availableThemes => AppTheme.values;
 
+  Map<String, String> get speechLocales => _settingsService.speechLocales;
+  List<String> get supportedSpeechLocales => _settingsService.supportedSpeechLocales;
+  String getSpeechLocaleDisplayName(String localeId) => _settingsService.getSpeechLocaleDisplayName(localeId);
+
   Future<void> loadSettings() async {
     _isLoading = true;
     notifyListeners();
@@ -28,10 +36,14 @@ class SettingsProvider with ChangeNotifier {
     try {
       _currency = await _settingsService.getCurrency();
       _theme = await _settingsService.getTheme();
+      _speechLocale = await _settingsService.getSpeechLocale();
+      _smartLabelMatching = await _settingsService.getSmartLabelMatching();
     } catch (e) {
       debugPrint('Error loading settings: $e');
       _currency = 'USD';
       _theme = AppTheme.navyBlue;
+      _speechLocale = null;
+      _smartLabelMatching = true;
     }
 
     _isLoading = false;
@@ -55,6 +67,26 @@ class SettingsProvider with ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Error setting theme: $e');
+    }
+  }
+
+  Future<void> setSpeechLocale(String? localeId) async {
+    try {
+      await _settingsService.setSpeechLocale(localeId);
+      _speechLocale = localeId;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error setting speech locale: $e');
+    }
+  }
+
+  Future<void> setSmartLabelMatching(bool enabled) async {
+    try {
+      await _settingsService.setSmartLabelMatching(enabled);
+      _smartLabelMatching = enabled;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error setting smart label matching: $e');
     }
   }
 

@@ -1,10 +1,14 @@
 import 'dart:math' show sin;
 
+import 'dart:math' show min;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../models/expense.dart';
 import '../providers/expense_provider.dart';
+import '../providers/settings_provider.dart';
+import '../services/database_service.dart';
 
 class VoiceInputButton extends StatefulWidget {
   const VoiceInputButton({super.key});
@@ -204,6 +208,10 @@ class VoiceInputButtonState extends State<VoiceInputButton>
 
     _animationController.forward();
 
+    // Get selected locale from settings
+    final settingsProvider = context.read<SettingsProvider>();
+    final localeId = settingsProvider.speechLocale;
+
     await _speech.listen(
       onResult: (result) {
         if (_isProcessing) return; // Skip if already processing
@@ -233,6 +241,7 @@ class VoiceInputButtonState extends State<VoiceInputButton>
       },
       listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(seconds: 4),
+      localeId: localeId,
       listenOptions: stt.SpeechListenOptions(
         partialResults: true,
         listenMode: stt.ListenMode.dictation,
@@ -299,7 +308,14 @@ class VoiceInputButtonState extends State<VoiceInputButton>
     }
 
     final parsed = _parseExpense(text);
-    final label = parsed['label']!;
+    String label = parsed['label']!;
+
+    // Try smart label matching
+    final matchedLabel = await _findBestMatchingLabel(label);
+    final wasSmartMatched = matchedLabel != null;
+    if (wasSmartMatched) {
+      label = matchedLabel;
+    }
 
     // Check if same label exists in database to auto-capture category
     final expenseProvider = context.read<ExpenseProvider>();
@@ -327,8 +343,12 @@ class VoiceInputButtonState extends State<VoiceInputButton>
 
     expenseProvider.addExpense(expense);
 
-    final categorySource = existingCategory != null ? 'auto' : 'detected';
-    _showSnackBar('Added: ${expense.label} - ${parsed['amount']} ($category - $categorySource)');
+    // Build status message
+    String statusMsg = 'Added: ${expense.label} - ${parsed['amount']}';
+    if (wasSmartMatched) {
+      statusMsg += ' (smart match)';
+    }
+    _showSnackBar(statusMsg);
   }
 
   Map<String, String> _parseExpense(String text) {
@@ -459,6 +479,76 @@ class VoiceInputButtonState extends State<VoiceInputButton>
       if (text.contains(keyword)) return true;
     }
     return false;
+  }
+
+  /// Calculate Levenshtein distance between two strings
+  int _levenshteinDistance(String s1, String s2) {
+    if (s1 == s2) return 0;
+    if (s1.isEmpty) return s2.length;
+    if (s2.isEmpty) return s1.length;
+
+    List<int> v0 = List<int>.generate(s2.length + 1, (i) => i);
+    List<int> v1 = List<int>.filled(s2.length + 1, 0);
+
+    for (int i = 0; i < s1.length; i++) {
+      v1[0] = i + 1;
+
+      for (int j = 0; j < s2.length; j++) {
+        final cost = s1[i] == s2[j] ? 0 : 1;
+        v1[j + 1] = min(min(v1[j] + 1, v0[j + 1] + 1), v0[j] + cost);
+      }
+
+      final temp = v0;
+      v0 = v1;
+      v1 = temp;
+    }
+
+    return v0[s2.length];
+  }
+
+  /// Calculate similarity percentage between two strings (0.0 to 1.0)
+  double _similarity(String s1, String s2) {
+    final s1Lower = s1.toLowerCase();
+    final s2Lower = s2.toLowerCase();
+
+    if (s1Lower == s2Lower) return 1.0;
+
+    final maxLen = s1.length > s2.length ? s1.length : s2.length;
+    if (maxLen == 0) return 1.0;
+
+    final distance = _levenshteinDistance(s1Lower, s2Lower);
+    return 1.0 - (distance / maxLen);
+  }
+
+  /// Find best matching label from recent labels
+  Future<String?> _findBestMatchingLabel(String inputLabel) async {
+    final settingsProvider = context.read<SettingsProvider>();
+    if (!settingsProvider.smartLabelMatching) return null;
+
+    final dbService = DatabaseService();
+    final recentLabels = await dbService.getRecentLabels(limit: 500);
+
+    if (recentLabels.isEmpty) return null;
+
+    String? bestMatch;
+    double bestSimilarity = 0.0;
+    const double threshold = 0.75; // 75% similarity threshold
+
+    for (final label in recentLabels) {
+      final similarity = _similarity(inputLabel, label);
+      if (similarity > bestSimilarity && similarity >= threshold) {
+        bestSimilarity = similarity;
+        bestMatch = label;
+      }
+    }
+
+    // Only return if it's not an exact match (exact matches are already handled)
+    if (bestMatch != null && bestMatch.toLowerCase() != inputLabel.toLowerCase()) {
+      debugPrint('Smart match: "$inputLabel" -> "$bestMatch" (${(bestSimilarity * 100).toInt()}%)');
+      return bestMatch;
+    }
+
+    return null;
   }
 
   void _showSnackBar(String message) {
