@@ -629,6 +629,16 @@ class DatabaseService {
     await db.delete('subscriptions');
   }
 
+  /// Clear only SMS-scanned subscriptions (those with smsHash)
+  /// Preserves manually added and cloud-synced subscriptions
+  Future<void> clearSmsScannedSubscriptions() async {
+    final db = await database;
+    await db.delete(
+      'subscriptions',
+      where: 'smsHash IS NOT NULL',
+    );
+  }
+
   /// Permanently delete a subscription
   Future<int> deleteSubscription(int id) async {
     final db = await database;
@@ -686,6 +696,45 @@ class DatabaseService {
         bankName: subscription.bankName,
         smsHash: subscription.smsHash,
       );
+      await updateSubscription(updated);
+    } else {
+      await insertSubscription(subscription);
+    }
+  }
+
+  // ============= Subscription Sync Methods =============
+
+  /// Get subscription by UUID (for sync)
+  Future<Subscription?> getSubscriptionByUuid(String uuid) async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+      limit: 1,
+    );
+    if (maps.isNotEmpty) {
+      return Subscription.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  /// Get all subscriptions for sync (including deleted)
+  Future<List<Subscription>> getAllSubscriptionsForSync() async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      orderBy: 'createdAt ASC',
+    );
+    return maps.map((map) => Subscription.fromMap(map)).toList();
+  }
+
+  /// Upsert subscription from cloud sync
+  Future<void> upsertSubscriptionFromSync(Subscription subscription) async {
+    final existing = await getSubscriptionByUuid(subscription.uuid);
+    if (existing != null) {
+      // Update with cloud data, preserving local ID
+      final updated = subscription.copyWith(id: existing.id);
       await updateSubscription(updated);
     } else {
       await insertSubscription(subscription);

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import '../models/expense.dart';
+import '../models/subscription.dart';
 import 'database_service.dart';
 import 'sheets_service.dart';
 
@@ -293,6 +294,152 @@ class SyncService {
       );
     } catch (e) {
       debugPrint('Error during initial upload: $e');
+      return SyncStatus(
+        result: SyncResult.unknownError,
+        errorMessage: e.toString(),
+      );
+    }
+  }
+
+  // ==================== SUBSCRIPTIONS SYNC ====================
+
+  /// Sync all subscriptions: upload local, then download remote
+  Future<SyncStatus> syncAllSubscriptions(
+    http.Client client,
+    String spreadsheetId,
+  ) async {
+    try {
+      // Step 1: Upload local subscriptions to cloud
+      final uploadResult = await uploadSubscriptions(client, spreadsheetId);
+      if (!uploadResult.isSuccess && uploadResult.result != SyncResult.noChanges) {
+        return uploadResult;
+      }
+
+      // Step 2: Download remote subscriptions
+      final downloadResult = await downloadSubscriptions(client, spreadsheetId);
+      if (!downloadResult.isSuccess && downloadResult.result != SyncResult.noChanges) {
+        return downloadResult;
+      }
+
+      return SyncStatus(
+        result: SyncResult.success,
+        uploaded: uploadResult.uploaded,
+        downloaded: downloadResult.downloaded,
+      );
+    } catch (e) {
+      debugPrint('Error during subscriptions sync: $e');
+      return SyncStatus(
+        result: SyncResult.unknownError,
+        errorMessage: e.toString(),
+      );
+    }
+  }
+
+  /// Upload local subscriptions to cloud
+  Future<SyncStatus> uploadSubscriptions(
+    http.Client client,
+    String spreadsheetId,
+  ) async {
+    try {
+      final localSubscriptions = await _databaseService.getAllSubscriptionsForSync();
+
+      if (localSubscriptions.isEmpty) {
+        debugPrint('Subscriptions Sync: No subscriptions to upload');
+        return SyncStatus(result: SyncResult.noChanges);
+      }
+
+      debugPrint('Subscriptions Sync: Uploading ${localSubscriptions.length} subscriptions');
+
+      // Read existing cloud data
+      final cloudSubscriptions = await _sheetsService.readAllSubscriptions(client, spreadsheetId);
+      final cloudByUuid = <String, Subscription>{};
+      for (final sub in cloudSubscriptions) {
+        cloudByUuid[sub.uuid] = sub;
+      }
+
+      // Filter: only upload if local is newer or new
+      final toUpload = <Subscription>[];
+      for (final local in localSubscriptions) {
+        final cloud = cloudByUuid[local.uuid];
+        if (cloud == null) {
+          // New subscription, upload it
+          toUpload.add(local);
+        } else {
+          // Compare createdAt for conflict resolution (simpler than expenses)
+          if (local.createdAt.isAfter(cloud.createdAt)) {
+            toUpload.add(local);
+          }
+        }
+      }
+
+      if (toUpload.isEmpty) {
+        return SyncStatus(result: SyncResult.noChanges);
+      }
+
+      // Write to cloud
+      final success = await _sheetsService.writeSubscriptions(client, spreadsheetId, toUpload);
+      if (!success) {
+        return SyncStatus(
+          result: SyncResult.sheetError,
+          errorMessage: 'Failed to write subscriptions to sheet',
+        );
+      }
+
+      return SyncStatus(
+        result: SyncResult.success,
+        uploaded: toUpload.length,
+      );
+    } catch (e) {
+      debugPrint('Error during subscriptions upload: $e');
+      return SyncStatus(
+        result: SyncResult.unknownError,
+        errorMessage: e.toString(),
+      );
+    }
+  }
+
+  /// Download remote subscriptions to local
+  Future<SyncStatus> downloadSubscriptions(
+    http.Client client,
+    String spreadsheetId,
+  ) async {
+    try {
+      final cloudSubscriptions = await _sheetsService.readAllSubscriptions(client, spreadsheetId);
+
+      if (cloudSubscriptions.isEmpty) {
+        return SyncStatus(result: SyncResult.noChanges);
+      }
+
+      int downloadCount = 0;
+
+      for (final cloud in cloudSubscriptions) {
+        final local = await _databaseService.getSubscriptionByUuid(cloud.uuid);
+
+        if (local == null) {
+          // New from cloud, insert locally (unless deleted)
+          if (!cloud.isDeleted) {
+            await _databaseService.upsertSubscriptionFromSync(cloud);
+            downloadCount++;
+          }
+        } else {
+          // Compare timestamps for conflict resolution
+          if (cloud.createdAt.isAfter(local.createdAt)) {
+            await _databaseService.upsertSubscriptionFromSync(cloud);
+            downloadCount++;
+          }
+        }
+      }
+
+      if (downloadCount == 0) {
+        return SyncStatus(result: SyncResult.noChanges);
+      }
+
+      return SyncStatus(
+        result: SyncResult.success,
+        downloaded: downloadCount,
+      );
+    } catch (e) {
+      debugPrint('Error during subscriptions download: $e');
       return SyncStatus(
         result: SyncResult.unknownError,
         errorMessage: e.toString(),

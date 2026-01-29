@@ -267,12 +267,42 @@ class SyncProvider with ChangeNotifier {
     }
   }
 
-  /// Select an existing sheet
+  /// Select an existing sheet and download subscriptions
   Future<void> selectSheet(SheetInfo sheet) async {
     _selectedSheetId = sheet.id;
     _selectedSheetName = sheet.name;
     await _saveSelectedSheet();
     notifyListeners();
+
+    // Download subscriptions from the selected sheet
+    await _downloadSubscriptionsFromSheet();
+  }
+
+  /// Download subscriptions from current sheet (called when sheet is selected)
+  /// Clears all local subscriptions first, then downloads from cloud
+  Future<void> _downloadSubscriptionsFromSheet() async {
+    if (!_isSignedIn || _selectedSheetId == null) return;
+
+    final client = await _authService.getAuthenticatedClient();
+    if (client == null) return;
+
+    try {
+      // Clear all local subscriptions first
+      debugPrint('Clearing local subscriptions before download...');
+      await _databaseService.clearAllSubscriptions();
+
+      // Download subscriptions from the selected sheet
+      debugPrint('Downloading subscriptions from selected sheet...');
+      final result = await _syncService.downloadSubscriptions(
+        client,
+        _selectedSheetId!,
+      );
+      debugPrint('Downloaded ${result.downloaded} subscriptions');
+    } catch (e) {
+      debugPrint('Error downloading subscriptions: $e');
+    } finally {
+      client.close();
+    }
   }
 
   /// Perform full sync
@@ -300,24 +330,38 @@ class SyncProvider with ChangeNotifier {
     }
 
     try {
-      final result = await _syncService.syncAll(
+      // Sync expenses
+      final expenseResult = await _syncService.syncAll(
         client,
         _selectedSheetId!,
         _lastSyncTime,
         _deviceId!,
       );
 
-      if (result.isSuccess) {
+      // Sync subscriptions
+      final subscriptionResult = await _syncService.syncAllSubscriptions(
+        client,
+        _selectedSheetId!,
+      );
+
+      // Combine results
+      final isSuccess = expenseResult.isSuccess && subscriptionResult.isSuccess;
+      if (isSuccess) {
         _lastSyncTime = DateTime.now();
         await _saveLastSyncTime();
         _syncState = SyncState.success;
       } else {
         _syncState = SyncState.error;
-        _syncError = result.errorMessage;
+        _syncError = expenseResult.errorMessage ?? subscriptionResult.errorMessage;
       }
 
       notifyListeners();
-      return result;
+      return SyncStatus(
+        result: isSuccess ? SyncResult.success : SyncResult.unknownError,
+        uploaded: expenseResult.uploaded + subscriptionResult.uploaded,
+        downloaded: expenseResult.downloaded + subscriptionResult.downloaded,
+        errorMessage: _syncError,
+      );
     } finally {
       client.close();
     }
@@ -348,23 +392,35 @@ class SyncProvider with ChangeNotifier {
     }
 
     try {
-      final result = await _syncService.initialUpload(
+      // Upload expenses
+      final expenseResult = await _syncService.initialUpload(
         client,
         _selectedSheetId!,
         _deviceId!,
       );
 
-      if (result.isSuccess) {
+      // Upload subscriptions
+      final subscriptionResult = await _syncService.uploadSubscriptions(
+        client,
+        _selectedSheetId!,
+      );
+
+      final isSuccess = expenseResult.isSuccess && subscriptionResult.isSuccess;
+      if (isSuccess) {
         _lastSyncTime = DateTime.now();
         await _saveLastSyncTime();
         _syncState = SyncState.success;
       } else {
         _syncState = SyncState.error;
-        _syncError = result.errorMessage;
+        _syncError = expenseResult.errorMessage ?? subscriptionResult.errorMessage;
       }
 
       notifyListeners();
-      return result;
+      return SyncStatus(
+        result: isSuccess ? SyncResult.success : SyncResult.unknownError,
+        uploaded: expenseResult.uploaded + subscriptionResult.uploaded,
+        errorMessage: _syncError,
+      );
     } finally {
       client.close();
     }
@@ -395,22 +451,34 @@ class SyncProvider with ChangeNotifier {
     }
 
     try {
-      final result = await _syncService.restoreFromCloud(
+      // Restore expenses
+      final expenseResult = await _syncService.restoreFromCloud(
         client,
         _selectedSheetId!,
       );
 
-      if (result.isSuccess) {
+      // Download subscriptions
+      final subscriptionResult = await _syncService.downloadSubscriptions(
+        client,
+        _selectedSheetId!,
+      );
+
+      final isSuccess = expenseResult.isSuccess && subscriptionResult.isSuccess;
+      if (isSuccess) {
         _lastSyncTime = DateTime.now();
         await _saveLastSyncTime();
         _syncState = SyncState.success;
       } else {
         _syncState = SyncState.error;
-        _syncError = result.errorMessage;
+        _syncError = expenseResult.errorMessage ?? subscriptionResult.errorMessage;
       }
 
       notifyListeners();
-      return result;
+      return SyncStatus(
+        result: isSuccess ? SyncResult.success : SyncResult.unknownError,
+        downloaded: expenseResult.downloaded + subscriptionResult.downloaded,
+        errorMessage: _syncError,
+      );
     } finally {
       client.close();
     }

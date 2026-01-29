@@ -67,6 +67,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddDialog(context),
         tooltip: 'Add Subscription',
+        foregroundColor: Colors.white,
         child: const Icon(Icons.add),
       ),
     );

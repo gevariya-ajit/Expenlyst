@@ -3,6 +3,7 @@ import 'package:googleapis/sheets/v4.dart' as sheets;
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
 import '../models/expense.dart';
+import '../models/subscription.dart';
 
 class SheetInfo {
   final String id;
@@ -28,6 +29,22 @@ class SheetsService {
     'isDeleted',
     'deviceId',
     'archivedAt',
+  ];
+
+  // Subscriptions sheet
+  static const String _subscriptionsSheetName = 'Subscriptions';
+  static const List<String> _subscriptionsHeaderRow = [
+    'uuid',
+    'platform',
+    'category',
+    'amount',
+    'frequency',
+    'lastPaymentDate',
+    'nextPaymentDate',
+    'bankName',
+    'isActive',
+    'isDeleted',
+    'createdAt',
   ];
 
   /// Create a new Expenlyst spreadsheet
@@ -269,6 +286,165 @@ class SheetsService {
       return true;
     } catch (e) {
       debugPrint('Error checking spreadsheet access: $e');
+      return false;
+    }
+  }
+
+  // ==================== SUBSCRIPTIONS ====================
+
+  /// Ensure the Subscriptions sheet exists with headers
+  Future<bool> _ensureSubscriptionsSheetExists(
+      sheets.SheetsApi sheetsApi, String spreadsheetId) async {
+    try {
+      final spreadsheet = await sheetsApi.spreadsheets.get(spreadsheetId);
+      final sheetExists = spreadsheet.sheets?.any(
+            (s) => s.properties?.title == _subscriptionsSheetName,
+          ) ??
+          false;
+
+      if (!sheetExists) {
+        // Create the Subscriptions sheet
+        await sheetsApi.spreadsheets.batchUpdate(
+          sheets.BatchUpdateSpreadsheetRequest(
+            requests: [
+              sheets.Request(
+                addSheet: sheets.AddSheetRequest(
+                  properties: sheets.SheetProperties(
+                    title: _subscriptionsSheetName,
+                    gridProperties: sheets.GridProperties(frozenRowCount: 1),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          spreadsheetId,
+        );
+
+        // Add header row
+        await sheetsApi.spreadsheets.values.update(
+          sheets.ValueRange(values: [_subscriptionsHeaderRow]),
+          spreadsheetId,
+          '$_subscriptionsSheetName!A1:K1',
+          valueInputOption: 'RAW',
+        );
+      }
+      return true;
+    } catch (e) {
+      debugPrint('Error ensuring subscriptions sheet exists: $e');
+      return false;
+    }
+  }
+
+  /// Read all subscriptions from spreadsheet
+  Future<List<Subscription>> readAllSubscriptions(
+      http.Client client, String spreadsheetId) async {
+    try {
+      final sheetsApi = sheets.SheetsApi(client);
+
+      // Ensure the sheet exists first
+      await _ensureSubscriptionsSheetExists(sheetsApi, spreadsheetId);
+
+      final response = await sheetsApi.spreadsheets.values.get(
+        spreadsheetId,
+        '$_subscriptionsSheetName!A2:K',
+      );
+
+      final values = response.values;
+      if (values == null || values.isEmpty) {
+        return [];
+      }
+
+      return values.map((row) => Subscription.fromSheetRow(row)).toList();
+    } catch (e) {
+      debugPrint('Error reading subscriptions from sheet: $e');
+      return [];
+    }
+  }
+
+  /// Write subscriptions to spreadsheet (append or update)
+  Future<bool> writeSubscriptions(
+    http.Client client,
+    String spreadsheetId,
+    List<Subscription> subscriptions,
+  ) async {
+    if (subscriptions.isEmpty) return true;
+
+    try {
+      final sheetsApi = sheets.SheetsApi(client);
+
+      // Ensure the sheet exists
+      final sheetReady =
+          await _ensureSubscriptionsSheetExists(sheetsApi, spreadsheetId);
+      if (!sheetReady) {
+        debugPrint('Failed to ensure subscriptions sheet exists');
+        return false;
+      }
+
+      // First, get all existing rows to find UUIDs
+      sheets.ValueRange? existingData;
+      try {
+        existingData = await sheetsApi.spreadsheets.values.get(
+          spreadsheetId,
+          '$_subscriptionsSheetName!A2:K',
+        );
+      } catch (e) {
+        debugPrint('No existing subscription data found: $e');
+      }
+
+      final existingRows = existingData?.values ?? [];
+      final uuidToRowIndex = <String, int>{};
+
+      for (var i = 0; i < existingRows.length; i++) {
+        if (existingRows[i].isNotEmpty) {
+          final uuid = existingRows[i][0]?.toString() ?? '';
+          if (uuid.isNotEmpty) {
+            uuidToRowIndex[uuid] = i + 2;
+          }
+        }
+      }
+
+      // Separate into updates and appends
+      final toUpdate = <int, Subscription>{};
+      final toAppend = <Subscription>[];
+
+      for (final subscription in subscriptions) {
+        if (uuidToRowIndex.containsKey(subscription.uuid)) {
+          toUpdate[uuidToRowIndex[subscription.uuid]!] = subscription;
+        } else {
+          toAppend.add(subscription);
+        }
+      }
+
+      // Update existing rows
+      for (final entry in toUpdate.entries) {
+        final rowIndex = entry.key;
+        final subscription = entry.value;
+        final range = '$_subscriptionsSheetName!A$rowIndex:K$rowIndex';
+
+        await sheetsApi.spreadsheets.values.update(
+          sheets.ValueRange(values: [subscription.toSheetRow()]),
+          spreadsheetId,
+          range,
+          valueInputOption: 'RAW',
+        );
+      }
+
+      // Append new rows
+      if (toAppend.isNotEmpty) {
+        final appendValues = toAppend.map((s) => s.toSheetRow()).toList();
+        await sheetsApi.spreadsheets.values.append(
+          sheets.ValueRange(values: appendValues),
+          spreadsheetId,
+          '$_subscriptionsSheetName!A:K',
+          valueInputOption: 'RAW',
+          insertDataOption: 'INSERT_ROWS',
+        );
+      }
+
+      return true;
+    } catch (e, stackTrace) {
+      debugPrint('Error writing subscriptions to sheet: $e');
+      debugPrint('Stack trace: $stackTrace');
       return false;
     }
   }

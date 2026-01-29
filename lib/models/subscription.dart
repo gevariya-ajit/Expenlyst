@@ -194,4 +194,50 @@ class Subscription {
   String toString() {
     return 'Subscription(platform: $platform, amount: $amount, frequency: ${frequency.displayName})';
   }
+
+  /// Convert to Google Sheet row
+  List<Object> toSheetRow() {
+    return [
+      uuid,
+      platform,
+      category.name,
+      amount,
+      frequency.name,
+      lastPaymentDate.toIso8601String(),
+      nextPaymentDate?.toIso8601String() ?? '',
+      bankName ?? '',
+      isActive ? 'TRUE' : 'FALSE',
+      isDeleted ? 'TRUE' : 'FALSE',
+      createdAt.toIso8601String(),
+    ];
+  }
+
+  /// Create from Google Sheet row
+  factory Subscription.fromSheetRow(List<Object?> row) {
+    return Subscription(
+      uuid: row[0]?.toString() ?? '',
+      platform: row[1]?.toString() ?? '',
+      category: SubscriptionCategory.values.firstWhere(
+        (e) => e.name == row[2]?.toString(),
+        orElse: () => SubscriptionCategory.other,
+      ),
+      amount: double.tryParse(row[3]?.toString() ?? '0') ?? 0,
+      frequency: SubscriptionFrequency.values.firstWhere(
+        (e) => e.name == row[4]?.toString(),
+        orElse: () => SubscriptionFrequency.monthly,
+      ),
+      lastPaymentDate: DateTime.tryParse(row[5]?.toString() ?? '') ?? DateTime.now(),
+      nextPaymentDate: row.length > 6 && row[6]?.toString().isNotEmpty == true
+          ? DateTime.tryParse(row[6]!.toString())
+          : null,
+      bankName: row.length > 7 && row[7]?.toString().isNotEmpty == true
+          ? row[7]!.toString()
+          : null,
+      isActive: row.length > 8 ? row[8]?.toString().toUpperCase() == 'TRUE' : true,
+      isDeleted: row.length > 9 ? row[9]?.toString().toUpperCase() == 'TRUE' : false,
+      createdAt: row.length > 10 && row[10]?.toString().isNotEmpty == true
+          ? DateTime.tryParse(row[10]!.toString()) ?? DateTime.now()
+          : DateTime.now(),
+    );
+  }
 }
