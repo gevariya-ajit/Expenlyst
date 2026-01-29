@@ -19,16 +19,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   @override
   void initState() {
     super.initState();
-    debugPrint('[UI] initState called');
     // Load subscriptions when screen opens (only if not already scanning)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<SubscriptionProvider>();
-      debugPrint('[UI] postFrameCallback - scanStatus=${provider.scanStatus}');
       if (provider.scanStatus != ScanStatus.scanning) {
-        debugPrint('[UI] Calling loadSubscriptions from initState');
         provider.loadSubscriptions();
-      } else {
-        debugPrint('[UI] Skipping loadSubscriptions - already scanning');
       }
     });
   }
@@ -157,11 +152,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
   Widget _buildContent(BuildContext context, SubscriptionProvider provider,
       SettingsProvider settingsProvider) {
-    debugPrint('[UI] _buildContent called - scanStatus=${provider.scanStatus}, subscriptions=${provider.activeSubscriptions.length}');
-
     // Show scanning state as a full-screen indicator
     if (provider.scanStatus == ScanStatus.scanning) {
-      debugPrint('[UI] Showing SCANNING indicator');
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32.0),
@@ -217,11 +209,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final subscriptions = provider.activeSubscriptions;
 
     if (subscriptions.isEmpty) {
-      debugPrint('[UI] Showing EMPTY state');
       return _buildEmptyState(context);
     }
-
-    debugPrint('[UI] Showing SUBSCRIPTIONS list with ${subscriptions.length} items');
     return ListView(
       padding: const EdgeInsets.only(bottom: 80),
       children: [

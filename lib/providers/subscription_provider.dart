@@ -105,7 +105,6 @@ class SubscriptionProvider with ChangeNotifier {
 
   /// Load subscriptions from database
   Future<void> loadSubscriptions() async {
-    debugPrint('[LOAD] loadSubscriptions called, current scanStatus=$_scanStatus');
     try {
       // Load dismissed platforms from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
@@ -121,22 +120,16 @@ class SubscriptionProvider with ChangeNotifier {
               .contains(group.first.platform.toLowerCase()))
           .toList();
 
-      debugPrint('[LOAD] Loaded ${_subscriptions.length} subscriptions, ${_potentialDuplicates.length} duplicate groups, notifying...');
       notifyListeners();
     } catch (e) {
-      debugPrint('[LOAD] Error loading subscriptions: $e');
+      debugPrint('Error loading subscriptions: $e');
     }
   }
 
   /// Merge duplicate subscriptions (keep most recent, delete others)
   Future<void> mergeSubscriptions(List<Subscription> subscriptions) async {
-    try {
-      await _databaseService.mergeSubscriptions(subscriptions);
-      await loadSubscriptions();
-    } catch (e) {
-      debugPrint('Error merging subscriptions: $e');
-      rethrow;
-    }
+    await _databaseService.mergeSubscriptions(subscriptions);
+    await loadSubscriptions();
   }
 
   /// Dismiss a duplicate suggestion (user says they're different)
@@ -202,8 +195,6 @@ class SubscriptionProvider with ChangeNotifier {
   /// If clearExisting is true (long press), clears all subscriptions first
   /// If clearExisting is false (normal tap), only adds new subscriptions
   Future<void> scanSms({int daysToFetch = 365, bool clearExisting = false}) async {
-    debugPrint('[SCAN] scanSms called, clearExisting=$clearExisting');
-
     if (!isSmsSupported) {
       _errorMessage = 'SMS scanning is only available on Android';
       _scanStatus = ScanStatus.error;
@@ -226,12 +217,9 @@ class SubscriptionProvider with ChangeNotifier {
         prefs.remove(_dismissedDuplicatesKey);
       });
     }
-    debugPrint('[SCAN] Status set to SCANNING, clearExisting=$clearExisting, notifying...');
     notifyListeners();
-    debugPrint('[SCAN] Notified listeners');
 
     // Check permission
-    debugPrint('Checking SMS permission...');
     bool hasPermissionGranted;
     try {
       hasPermissionGranted = await _smsService.hasPermission();
@@ -241,13 +229,10 @@ class SubscriptionProvider with ChangeNotifier {
       notifyListeners();
       return;
     }
-    debugPrint('Has permission: $hasPermissionGranted');
 
     if (!hasPermissionGranted) {
-      debugPrint('Requesting permission...');
       try {
         final granted = await _smsService.requestPermission();
-        debugPrint('Permission granted: $granted');
 
         if (!granted) {
           final isPermanentlyDenied =
@@ -255,7 +240,6 @@ class SubscriptionProvider with ChangeNotifier {
           _scanStatus =
               isPermanentlyDenied ? ScanStatus.permissionDenied : ScanStatus.idle;
           notifyListeners();
-          debugPrint('Permission denied, returning');
           return;
         }
       } catch (e) {
@@ -270,11 +254,9 @@ class SubscriptionProvider with ChangeNotifier {
       // Clear only SMS-scanned subscriptions if doing full refresh
       // This preserves manually added and cloud-synced subscriptions
       if (clearExisting) {
-        debugPrint('[SCAN] Clearing SMS-scanned subscriptions (preserving cloud-synced)...');
         await _databaseService.clearSmsScannedSubscriptions();
       }
 
-      debugPrint('[SCAN] Starting SMS parsing...');
       final parsed = await _parserService.parseSubscriptions(
         daysToFetch: daysToFetch,
         onProgress: (current, total) {
@@ -284,12 +266,9 @@ class SubscriptionProvider with ChangeNotifier {
         },
       );
 
-      debugPrint('Parsed ${parsed.length} subscriptions');
-
       // Save new subscriptions to database
       for (final parsedSub in parsed) {
         final dayOfMonth = parsedSub.paymentDate.day;
-        debugPrint('Processing: ${parsedSub.platform} - ₹${parsedSub.amount} - Day $dayOfMonth');
 
         // Check if SMS hash already exists (exact duplicate message)
         final exists = await _databaseService.smsHashExists(parsedSub.smsHash);
@@ -308,29 +287,21 @@ class SubscriptionProvider with ChangeNotifier {
               smsHash: parsedSub.smsHash,
             );
             await _databaseService.updateSubscription(updated);
-            debugPrint('Updated: ${parsedSub.platform} - Day $dayOfMonth');
           } else {
             // Insert new subscription (different platform/amount/day)
             final subscription = parsedSub.toSubscription();
             await _databaseService.insertSubscription(subscription);
             _newSubscriptionsFound++;
-            debugPrint('Added new: ${parsedSub.platform} - ₹${parsedSub.amount} - Day $dayOfMonth');
           }
         }
       }
 
       // Reload subscriptions
-      debugPrint('[SCAN] About to load subscriptions from DB...');
       await loadSubscriptions();
-      debugPrint('[SCAN] Loaded ${_subscriptions.length} subscriptions from DB');
 
       _scanStatus = ScanStatus.completed;
-      debugPrint('[SCAN] Status set to COMPLETED, notifying...');
       notifyListeners();
-      debugPrint('[SCAN] Scan completed. Found $_newSubscriptionsFound new subscriptions');
-    } catch (e, stack) {
-      debugPrint('Error scanning SMS: $e');
-      debugPrint('Stack: $stack');
+    } catch (e) {
       _errorMessage = 'Failed to scan: $e';
       _scanStatus = ScanStatus.error;
       notifyListeners();
@@ -339,46 +310,26 @@ class SubscriptionProvider with ChangeNotifier {
 
   /// Add a subscription manually
   Future<void> addSubscription(Subscription subscription) async {
-    try {
-      await _databaseService.insertSubscription(subscription);
-      await loadSubscriptions();
-    } catch (e) {
-      debugPrint('Error adding subscription: $e');
-      rethrow;
-    }
+    await _databaseService.insertSubscription(subscription);
+    await loadSubscriptions();
   }
 
   /// Update a subscription
   Future<void> updateSubscription(Subscription subscription) async {
-    try {
-      await _databaseService.updateSubscription(subscription);
-      await loadSubscriptions();
-    } catch (e) {
-      debugPrint('Error updating subscription: $e');
-      rethrow;
-    }
+    await _databaseService.updateSubscription(subscription);
+    await loadSubscriptions();
   }
 
   /// Delete a subscription
   Future<void> deleteSubscription(int id) async {
-    try {
-      await _databaseService.softDeleteSubscription(id);
-      await loadSubscriptions();
-    } catch (e) {
-      debugPrint('Error deleting subscription: $e');
-      rethrow;
-    }
+    await _databaseService.softDeleteSubscription(id);
+    await loadSubscriptions();
   }
 
   /// Toggle subscription active status
   Future<void> toggleSubscriptionActive(int id, bool isActive) async {
-    try {
-      await _databaseService.toggleSubscriptionActive(id, isActive);
-      await loadSubscriptions();
-    } catch (e) {
-      debugPrint('Error toggling subscription: $e');
-      rethrow;
-    }
+    await _databaseService.toggleSubscriptionActive(id, isActive);
+    await loadSubscriptions();
   }
 
   /// Reset scan status
