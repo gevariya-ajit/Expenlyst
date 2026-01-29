@@ -14,6 +14,8 @@ class SubscriptionsScreen extends StatefulWidget {
 }
 
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
+  bool _showAllSubscriptions = false;
+
   @override
   void initState() {
     super.initState();
@@ -243,37 +245,12 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
         const SizedBox(height: 8),
 
-        // Subscription list
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  'Active Subscriptions',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              ...subscriptions.map((subscription) => SubscriptionCard(
-                    subscription: subscription,
-                    currencySymbol: settingsProvider.currencySymbol,
-                    onEdit: () => _showEditDialog(context, subscription),
-                    onDelete: () =>
-                        _confirmDelete(context, subscription),
-                    onToggleActive: (isActive) {
-                      if (subscription.id != null) {
-                        provider.toggleSubscriptionActive(
-                            subscription.id!, isActive);
-                      }
-                    },
-                  )),
-            ],
-          ),
+        // Subscriptions card
+        _buildSubscriptionsCard(
+          context,
+          subscriptions,
+          settingsProvider.currencySymbol,
+          provider,
         ),
 
         // Inactive subscriptions
@@ -314,6 +291,122 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  /// Build OTT subscriptions card
+  Widget _buildSubscriptionsCard(
+    BuildContext context,
+    List<Subscription> subscriptions,
+    String currencySymbol,
+    SubscriptionProvider provider,
+  ) {
+    // Filter only OTT subscriptions
+    final ottSubscriptions = subscriptions
+        .where((s) => s.category == SubscriptionCategory.ott)
+        .toList()
+      ..sort((a, b) {
+        final aDate = a.nextPaymentDate ?? DateTime(2100);
+        final bDate = b.nextPaymentDate ?? DateTime(2100);
+        return aDate.compareTo(bDate);
+      });
+
+    // If no OTT subscriptions, don't show the card
+    if (ottSubscriptions.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Show 4 items by default, all when expanded
+    const initialCount = 4;
+    final hasMore = ottSubscriptions.length > initialCount;
+    final displayList = _showAllSubscriptions
+        ? ottSubscriptions
+        : ottSubscriptions.take(initialCount).toList();
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: const Color(0xFFE8F5F3),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.live_tv,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'OTT',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Subscription items
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Column(
+              children: displayList
+                  .map((subscription) => SubscriptionCard(
+                        subscription: subscription,
+                        currencySymbol: currencySymbol,
+                        onEdit: () => _showEditDialog(context, subscription),
+                        onDelete: () => _confirmDelete(context, subscription),
+                        onToggleActive: (isActive) {
+                          if (subscription.id != null) {
+                            provider.toggleSubscriptionActive(
+                                subscription.id!, isActive);
+                          }
+                        },
+                      ))
+                  .toList(),
+            ),
+          ),
+
+          // See all / Show less
+          if (hasMore)
+            InkWell(
+              onTap: () {
+                setState(() {
+                  _showAllSubscriptions = !_showAllSubscriptions;
+                });
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  border: Border(
+                    top: BorderSide(
+                      color: Colors.grey.withOpacity(0.2),
+                    ),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    _showAllSubscriptions
+                        ? 'Show less'
+                        : 'See all (${ottSubscriptions.length})',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
