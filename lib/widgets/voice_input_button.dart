@@ -38,6 +38,9 @@ class VoiceInputButtonState extends State<VoiceInputButton>
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
 
+  OverlayEntry? _listeningOverlay;
+  final ValueNotifier<String> _lastWordsNotifier = ValueNotifier('');
+
   // Comprehensive category keywords mapping
   static const Map<String, List<String>> _categoryKeywords = {
     // Household
@@ -167,14 +170,39 @@ class VoiceInputButtonState extends State<VoiceInputButton>
 
   @override
   void dispose() {
+    _removeListeningOverlay();
+    _lastWordsNotifier.dispose();
     _animationController.dispose();
     super.dispose();
+  }
+
+  void _showListeningOverlay() {
+    _removeListeningOverlay();
+    _lastWordsNotifier.value = '';
+    _listeningOverlay = OverlayEntry(
+      builder: (context) => _ListeningOverlay(
+        animationController: _animationController,
+        lastWordsNotifier: _lastWordsNotifier,
+      ),
+    );
+    Overlay.of(context).insert(_listeningOverlay!);
+  }
+
+  void _removeListeningOverlay() {
+    _listeningOverlay?.remove();
+    _listeningOverlay = null;
+  }
+
+  void _updateLastWords(String words) {
+    _lastWords = words;
+    _lastWordsNotifier.value = words;
   }
 
   Future<void> _initSpeech() async {
     _isInitialized = await _speech.initialize(
       onError: (error) {
         debugPrint('Speech recognition error: $error');
+        _removeListeningOverlay();
         setState(() {
           _isListening = false;
         });
@@ -182,6 +210,7 @@ class VoiceInputButtonState extends State<VoiceInputButton>
       onStatus: (status) {
         debugPrint('Speech recognition status: $status');
         if (status == 'done' || status == 'notListening') {
+          _removeListeningOverlay();
           setState(() {
             _isListening = false;
           });
@@ -199,13 +228,14 @@ class VoiceInputButtonState extends State<VoiceInputButton>
 
     setState(() {
       _isListening = true;
-      _lastWords = '';
       _stableWords = '';
       _stableWordCount = 0;
       _lastChangeTime = null;
       _isProcessing = false;
     });
+    _updateLastWords('');
 
+    _showListeningOverlay();
     _animationController.forward();
 
     // Get selected locale from settings
@@ -217,9 +247,7 @@ class VoiceInputButtonState extends State<VoiceInputButton>
         if (_isProcessing) return; // Skip if already processing
 
         final newWords = result.recognizedWords;
-        setState(() {
-          _lastWords = newWords;
-        });
+        _updateLastWords(newWords);
 
         // Track text stability for smart auto-stop
         if (newWords != _stableWords) {
@@ -274,6 +302,7 @@ class VoiceInputButtonState extends State<VoiceInputButton>
     _animationController.stop();
     _animationController.reset();
 
+    _removeListeningOverlay();
     setState(() {
       _isListening = false;
     });
@@ -294,6 +323,7 @@ class VoiceInputButtonState extends State<VoiceInputButton>
       await _speech.stop();
       _animationController.stop();
       _animationController.reset();
+      _removeListeningOverlay();
       setState(() {
         _isListening = false;
         _isProcessing = false;
@@ -696,131 +726,154 @@ class VoiceInputButtonState extends State<VoiceInputButton>
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    // Animated FAB with pulse effect
+    return Stack(
+      alignment: Alignment.center,
       children: [
-        // Listening indicator with speech text
-        if (_isListening)
-          Container(
-            margin: const EdgeInsets.only(bottom: 20),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            constraints: const BoxConstraints(maxWidth: 300),
-            decoration: BoxDecoration(
+        // Pulse animation rings
+        if (_isListening) ...[
+          AnimatedBuilder(
+            animation: _animationController,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: _scaleAnimation.value,
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.red.withOpacity(_opacityAnimation.value),
+                  ),
+                ),
+              );
+            },
+          ),
+          AnimatedBuilder(
+            animation: _animationController,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: _scaleAnimation.value * 0.85,
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.red.withOpacity(_opacityAnimation.value * 0.7),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+        // Main FAB - circular
+        SizedBox(
+          width: 72,
+          height: 72,
+          child: FloatingActionButton(
+            onPressed: _isListening ? _stopListening : _startListening,
+            backgroundColor: _isListening
+                ? Colors.red
+                : Theme.of(context).colorScheme.primary,
+            shape: const CircleBorder(),
+            child: Icon(
+              _isListening ? Icons.stop : Icons.mic,
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildWaveBar(0),
-                    _buildWaveBar(1),
-                    _buildWaveBar(2),
-                    _buildWaveBar(3),
-                    _buildWaveBar(4),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _lastWords.isEmpty ? 'Listening...' : _lastWords,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: _lastWords.isEmpty ? Colors.grey[500] : Colors.black87,
-                    fontStyle: _lastWords.isEmpty ? FontStyle.italic : FontStyle.normal,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                if (_lastWords.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Auto-stops when you pause',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-                ],
-              ],
+              size: 32,
             ),
           ),
-
-        // Animated FAB with pulse effect
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            // Pulse animation rings
-            if (_isListening) ...[
-              AnimatedBuilder(
-                animation: _animationController,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: _scaleAnimation.value,
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.red.withOpacity(_opacityAnimation.value),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              AnimatedBuilder(
-                animation: _animationController,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: _scaleAnimation.value * 0.85,
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.red.withOpacity(_opacityAnimation.value * 0.7),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-            // Main FAB - circular
-            SizedBox(
-              width: 72,
-              height: 72,
-              child: FloatingActionButton(
-                onPressed: _isListening ? _stopListening : _startListening,
-                backgroundColor: _isListening
-                    ? Colors.red
-                    : Theme.of(context).colorScheme.primary,
-                shape: const CircleBorder(),
-                child: Icon(
-                  _isListening ? Icons.stop : Icons.mic,
-                  color: Colors.white,
-                  size: 32,
-                ),
-              ),
-            ),
-          ],
         ),
       ],
     );
   }
 
+}
+
+/// Overlay widget to show listening indicator
+class _ListeningOverlay extends StatelessWidget {
+  final AnimationController animationController;
+  final ValueNotifier<String> lastWordsNotifier;
+
+  const _ListeningOverlay({
+    required this.animationController,
+    required this.lastWordsNotifier,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 160, // Position above the bottom nav bar
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: ValueListenableBuilder<String>(
+            valueListenable: lastWordsNotifier,
+            builder: (context, lastWords, child) {
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                constraints: const BoxConstraints(maxWidth: 300),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildWaveBar(0),
+                        _buildWaveBar(1),
+                        _buildWaveBar(2),
+                        _buildWaveBar(3),
+                        _buildWaveBar(4),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      lastWords.isEmpty ? 'Listening...' : lastWords,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: lastWords.isEmpty ? Colors.grey[500] : Colors.black87,
+                        fontStyle: lastWords.isEmpty ? FontStyle.italic : FontStyle.normal,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (lastWords.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Auto-stops when you pause',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildWaveBar(int index) {
     return AnimatedBuilder(
-      animation: _animationController,
+      animation: animationController,
       builder: (context, child) {
         final offset = index * 0.2;
-        final value = (_animationController.value + offset) % 1.0;
+        final value = (animationController.value + offset) % 1.0;
         final height = 8.0 + (sin(value * 3.14159 * 2) + 1) * 12;
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 3),

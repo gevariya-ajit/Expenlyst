@@ -9,8 +9,10 @@ import '../models/expense.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/expense_list.dart';
 import '../widgets/voice_input_button.dart';
+import '../widgets/custom_bottom_nav_bar.dart';
 import 'settings_screen.dart';
 import 'all_expenses_screen.dart';
+import 'subscriptions_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -363,83 +365,97 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _showAddExpenseDialog,
             tooltip: 'Add expense manually',
           ),
-          IconButton(
-            icon: const Icon(Icons.list_alt),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AllExpensesScreen(),
-                ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          // Main content
+          Consumer<ExpenseProvider>(
+            builder: (context, expenseProvider, child) {
+              final isToday = expenseProvider.isToday;
+              final selectedDate = expenseProvider.selectedDate;
+
+              // Format header text
+              String headerText;
+              if (isToday) {
+                headerText = "Today's Expenses";
+              } else {
+                headerText = DateFormat('EEE, MMM d').format(selectedDate);
+              }
+
+              return Column(
+                children: [
+                  const SummaryCard(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            headerText,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey[800],
+                            ),
+                          ),
+                        ),
+                        if (!isToday)
+                          TextButton.icon(
+                            onPressed: _goToToday,
+                            icon: const Icon(Icons.today, size: 18),
+                            label: const Text('Today'),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.calendar_month),
+                          onPressed: _selectDate,
+                          tooltip: 'Select date',
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Expanded(
+                    child: ExpenseList(),
+                  ),
+                  // Bottom padding for nav bar
+                  const SizedBox(height: 86),
+                ],
               );
             },
-            tooltip: 'All expenses',
           ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: _navigateToSettings,
+          // Bottom navigation bar overlay
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: CustomBottomNavBar(
+              onExpensesTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AllExpensesScreen(),
+                  ),
+                );
+              },
+              onSubscriptionsTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SubscriptionsScreen(),
+                  ),
+                );
+              },
+              centerButton: VoiceInputButton(key: _voiceInputKey),
+            ),
           ),
         ],
       ),
-      body: Consumer<ExpenseProvider>(
-        builder: (context, expenseProvider, child) {
-          final isToday = expenseProvider.isToday;
-          final selectedDate = expenseProvider.selectedDate;
-
-          // Format header text
-          String headerText;
-          if (isToday) {
-            headerText = "Today's Expenses";
-          } else {
-            headerText = DateFormat('EEE, MMM d').format(selectedDate);
-          }
-
-          return Column(
-            children: [
-              const SummaryCard(),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        headerText,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey[800],
-                        ),
-                      ),
-                    ),
-                    if (!isToday)
-                      TextButton.icon(
-                        onPressed: _goToToday,
-                        icon: const Icon(Icons.today, size: 18),
-                        label: const Text('Today'),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.calendar_month),
-                      onPressed: _selectDate,
-                      tooltip: 'Select date',
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Expanded(
-                child: ExpenseList(),
-              ),
-            ],
-          );
-        },
-      ),
-      floatingActionButton: VoiceInputButton(key: _voiceInputKey),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     ),
     );
   }
