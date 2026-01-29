@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'providers/expense_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/sync_provider.dart';
+import 'providers/subscription_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/lock_screen.dart';
 import 'services/local_auth_service.dart';
@@ -30,6 +31,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ExpenseProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()..loadSettings()),
         ChangeNotifierProvider(create: (_) => SyncProvider()..init()),
+        ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
       ],
       child: const _AppWithAutoSync(),
     );

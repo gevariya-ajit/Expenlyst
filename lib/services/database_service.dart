@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:uuid/uuid.dart';
 import '../models/expense.dart';
+import '../models/subscription.dart';
 
 class DatabaseService {
   static Database? _database;
@@ -33,7 +34,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE expenses (
@@ -54,6 +55,27 @@ class DatabaseService {
         await db.execute('CREATE INDEX idx_expenses_ticker ON expenses(tickerSinceAddUpdate)');
         await db.execute('CREATE UNIQUE INDEX idx_expenses_uuid ON expenses(uuid)');
         await db.execute('CREATE INDEX idx_expenses_archived ON expenses(archivedAt)');
+
+        // Create subscriptions table
+        await db.execute('''
+          CREATE TABLE subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE,
+            platform TEXT NOT NULL,
+            category TEXT NOT NULL,
+            amount REAL NOT NULL,
+            frequency TEXT NOT NULL,
+            lastPaymentDate TEXT NOT NULL,
+            nextPaymentDate TEXT,
+            bankName TEXT,
+            smsHash TEXT UNIQUE,
+            isActive INTEGER DEFAULT 1,
+            isDeleted INTEGER DEFAULT 0,
+            createdAt TEXT NOT NULL
+          )
+        ''');
+        await db.execute('CREATE INDEX idx_subscriptions_platform ON subscriptions(platform)');
+        await db.execute('CREATE INDEX idx_subscriptions_category ON subscriptions(category)');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -91,6 +113,28 @@ class DatabaseService {
           // Add archivedAt column for archive feature
           await _addColumnIfNotExists(db, 'expenses', 'archivedAt', 'TEXT');
           await db.execute('CREATE INDEX IF NOT EXISTS idx_expenses_archived ON expenses(archivedAt)');
+        }
+        if (oldVersion < 6) {
+          // Create subscriptions table
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS subscriptions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              uuid TEXT UNIQUE,
+              platform TEXT NOT NULL,
+              category TEXT NOT NULL,
+              amount REAL NOT NULL,
+              frequency TEXT NOT NULL,
+              lastPaymentDate TEXT NOT NULL,
+              nextPaymentDate TEXT,
+              bankName TEXT,
+              smsHash TEXT UNIQUE,
+              isActive INTEGER DEFAULT 1,
+              isDeleted INTEGER DEFAULT 0,
+              createdAt TEXT NOT NULL
+            )
+          ''');
+          await db.execute('CREATE INDEX IF NOT EXISTS idx_subscriptions_platform ON subscriptions(platform)');
+          await db.execute('CREATE INDEX IF NOT EXISTS idx_subscriptions_category ON subscriptions(category)');
         }
       },
     );
@@ -394,5 +438,257 @@ class DatabaseService {
       LIMIT ?
     ''', [limit]);
     return maps.map((map) => map['label'] as String).toList();
+  }
+
+  // ============= Subscription Methods =============
+
+  /// Insert a new subscription
+  Future<int> insertSubscription(Subscription subscription) async {
+    final db = await database;
+    final map = subscription.toMap();
+    map.remove('id');
+    return await db.insert('subscriptions', map);
+  }
+
+  /// Get all active subscriptions
+  Future<List<Subscription>> getActiveSubscriptions() async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      where: 'isDeleted = 0 AND isActive = 1',
+      orderBy: 'platform ASC',
+    );
+    return maps.map((map) => Subscription.fromMap(map)).toList();
+  }
+
+  /// Get all subscriptions (including inactive)
+  Future<List<Subscription>> getAllSubscriptions() async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      where: 'isDeleted = 0',
+      orderBy: 'platform ASC',
+    );
+    return maps.map((map) => Subscription.fromMap(map)).toList();
+  }
+
+  /// Get subscription by ID
+  Future<Subscription?> getSubscriptionById(int id) async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (maps.isNotEmpty) {
+      return Subscription.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  /// Get subscription by SMS hash (for deduplication)
+  Future<Subscription?> getSubscriptionBySmsHash(String smsHash) async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      where: 'smsHash = ?',
+      whereArgs: [smsHash],
+      limit: 1,
+    );
+    if (maps.isNotEmpty) {
+      return Subscription.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  /// Get subscription by platform (for updating existing)
+  Future<Subscription?> getSubscriptionByPlatform(String platform) async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      where: 'platform = ? AND isDeleted = 0',
+      whereArgs: [platform],
+      limit: 1,
+    );
+    if (maps.isNotEmpty) {
+      return Subscription.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  /// Get subscription by platform and amount (for multiple subscriptions per platform)
+  Future<Subscription?> getSubscriptionByPlatformAndAmount(
+      String platform, double amount) async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      where: 'platform = ? AND amount = ? AND isDeleted = 0',
+      whereArgs: [platform, amount],
+      limit: 1,
+    );
+    if (maps.isNotEmpty) {
+      return Subscription.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  /// Get subscription by platform, amount, and exact payment day
+  Future<Subscription?> getSubscriptionByPlatformAmountAndDay(
+      String platform, double amount, int dayOfMonth) async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      where: 'platform = ? AND amount = ? AND isDeleted = 0',
+      whereArgs: [platform, amount],
+    );
+
+    // Filter by exact day of month from lastPaymentDate
+    for (final map in maps) {
+      final sub = Subscription.fromMap(map);
+      if (sub.lastPaymentDate.day == dayOfMonth) {
+        return sub;
+      }
+    }
+    return null;
+  }
+
+  /// Find potential duplicate subscriptions
+  /// Groups subscriptions with the same platform name (case-insensitive)
+  Future<List<List<Subscription>>> findPotentialDuplicates() async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      where: 'isDeleted = 0 AND isActive = 1',
+      orderBy: 'platform ASC, lastPaymentDate DESC',
+    );
+
+    final subscriptions = maps.map((m) => Subscription.fromMap(m)).toList();
+
+    // Group by platform name (case-insensitive)
+    final platformGroups = <String, List<Subscription>>{};
+    for (final sub in subscriptions) {
+      final key = sub.platform.toLowerCase();
+      platformGroups.putIfAbsent(key, () => []).add(sub);
+    }
+
+    // Return groups with more than one subscription
+    return platformGroups.values
+        .where((group) => group.length > 1)
+        .toList();
+  }
+
+  /// Check if two days of month are within buffer range
+  bool _isDayWithinBuffer(int day1, int day2, int buffer) {
+    final diff = (day1 - day2).abs();
+    return diff <= buffer || diff >= 28;
+  }
+
+  /// Merge subscriptions - keep first, delete others
+  Future<void> mergeSubscriptions(List<Subscription> subscriptions) async {
+    if (subscriptions.length < 2) return;
+
+    // Keep the most recent one
+    subscriptions.sort((a, b) => b.lastPaymentDate.compareTo(a.lastPaymentDate));
+    final toKeep = subscriptions.first;
+
+    // Delete the rest
+    for (var i = 1; i < subscriptions.length; i++) {
+      if (subscriptions[i].id != null) {
+        await softDeleteSubscription(subscriptions[i].id!);
+      }
+    }
+  }
+
+  /// Update a subscription
+  Future<int> updateSubscription(Subscription subscription) async {
+    final db = await database;
+    final map = subscription.toMap();
+    return await db.update(
+      'subscriptions',
+      map,
+      where: 'id = ?',
+      whereArgs: [subscription.id],
+    );
+  }
+
+  /// Soft delete a subscription
+  Future<int> softDeleteSubscription(int id) async {
+    final db = await database;
+    return await db.update(
+      'subscriptions',
+      {'isDeleted': 1},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Clear all subscriptions (for fresh rescan)
+  Future<void> clearAllSubscriptions() async {
+    final db = await database;
+    await db.delete('subscriptions');
+  }
+
+  /// Permanently delete a subscription
+  Future<int> deleteSubscription(int id) async {
+    final db = await database;
+    return await db.delete(
+      'subscriptions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Toggle subscription active status
+  Future<int> toggleSubscriptionActive(int id, bool isActive) async {
+    final db = await database;
+    return await db.update(
+      'subscriptions',
+      {'isActive': isActive ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Get subscriptions by category
+  Future<List<Subscription>> getSubscriptionsByCategory(
+      SubscriptionCategory category) async {
+    final db = await database;
+    final maps = await db.query(
+      'subscriptions',
+      where: 'category = ? AND isDeleted = 0',
+      whereArgs: [category.name],
+      orderBy: 'platform ASC',
+    );
+    return maps.map((map) => Subscription.fromMap(map)).toList();
+  }
+
+  /// Check if SMS hash already exists
+  Future<bool> smsHashExists(String smsHash) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT 1 FROM subscriptions WHERE smsHash = ? LIMIT 1',
+      [smsHash],
+    );
+    return result.isNotEmpty;
+  }
+
+  /// Insert or update subscription (upsert by platform)
+  Future<void> upsertSubscription(Subscription subscription) async {
+    final existing = await getSubscriptionByPlatform(subscription.platform);
+    if (existing != null) {
+      // Update existing subscription with new payment info
+      final updated = existing.copyWith(
+        amount: subscription.amount,
+        lastPaymentDate: subscription.lastPaymentDate,
+        nextPaymentDate: subscription.nextPaymentDate ?? subscription.calculateNextPaymentDate(),
+        frequency: subscription.frequency,
+        bankName: subscription.bankName,
+        smsHash: subscription.smsHash,
+      );
+      await updateSubscription(updated);
+    } else {
+      await insertSubscription(subscription);
+    }
   }
 }

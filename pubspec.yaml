@@ -65,6 +65,11 @@ dependencies:
   # Biometric authentication
   local_auth: ^2.1.8
 
+  # SMS reading (Android only)
+  flutter_sms_inbox: ^1.0.4
+  permission_handler: ^11.3.1
+  crypto: ^3.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
