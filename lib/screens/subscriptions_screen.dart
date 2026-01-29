@@ -236,6 +236,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           totalMonthlyCost: provider.totalMonthlyCost,
           subscriptionCount: subscriptions.length,
           currencySymbol: settingsProvider.currencySymbol,
+          remainingThisMonth: provider.remainingThisMonth,
+          nextMonthTotal: provider.nextMonthTotal,
         ),
 
         const SizedBox(height: 8),

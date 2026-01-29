@@ -49,6 +49,51 @@ class SubscriptionProvider with ChangeNotifier {
     return activeSubscriptions.fold(0.0, (sum, sub) => sum + sub.monthlyCost);
   }
 
+  /// Calculate remaining payments for this month (subscriptions not yet paid)
+  double get remainingThisMonth {
+    final now = DateTime.now();
+
+    return activeSubscriptions.fold(0.0, (sum, sub) {
+      final nextDate = sub.nextPaymentDate;
+      if (nextDate == null) return sum;
+
+      // Check if next payment is in current month and hasn't passed
+      if (nextDate.year == now.year &&
+          nextDate.month == now.month &&
+          nextDate.day >= now.day) {
+        return sum + sub.amount;
+      }
+      return sum;
+    });
+  }
+
+  /// Calculate total payments for next month
+  double get nextMonthTotal {
+    final now = DateTime.now();
+    final nextMonth = now.month == 12 ? 1 : now.month + 1;
+    final nextMonthYear = now.month == 12 ? now.year + 1 : now.year;
+
+    return activeSubscriptions.fold(0.0, (sum, sub) {
+      final nextDate = sub.nextPaymentDate;
+      if (nextDate == null) return sum;
+
+      // Check if nextPaymentDate falls in next month
+      if (nextDate.year == nextMonthYear && nextDate.month == nextMonth) {
+        return sum + sub.amount;
+      }
+
+      // For monthly subscriptions with nextPaymentDate in current month,
+      // they will also have a payment next month
+      if (sub.frequency == SubscriptionFrequency.monthly &&
+          nextDate.year == now.year &&
+          nextDate.month == now.month) {
+        return sum + sub.amount;
+      }
+
+      return sum;
+    });
+  }
+
   /// Get subscriptions grouped by category
   Map<SubscriptionCategory, List<Subscription>> get subscriptionsByCategory {
     final grouped = <SubscriptionCategory, List<Subscription>>{};

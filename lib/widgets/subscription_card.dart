@@ -181,6 +181,18 @@ class SubscriptionCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Show per month cost for non-monthly subscriptions
+                  if (subscription.frequency != SubscriptionFrequency.monthly)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '$currencySymbol${_formatAmount(subscription.monthlyCost)}/mo',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ),
                 ],
               ),
               // Menu button
@@ -274,21 +286,28 @@ class SubscriptionCard extends StatelessWidget {
   }
 }
 
-/// Summary card showing total monthly cost
+/// Summary card showing total monthly cost and upcoming payments
 class SubscriptionSummaryCard extends StatelessWidget {
   final double totalMonthlyCost;
   final int subscriptionCount;
   final String currencySymbol;
+  final double remainingThisMonth;
+  final double nextMonthTotal;
 
   const SubscriptionSummaryCard({
     super.key,
     required this.totalMonthlyCost,
     required this.subscriptionCount,
     required this.currencySymbol,
+    required this.remainingThisMonth,
+    required this.nextMonthTotal,
   });
 
   @override
   Widget build(BuildContext context) {
+    final onContainer = Theme.of(context).colorScheme.onPrimaryContainer;
+    final labelColor = onContainer.withOpacity(0.7);
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(
@@ -297,64 +316,109 @@ class SubscriptionSummaryCard extends StatelessWidget {
       color: Theme.of(context).colorScheme.primaryContainer,
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Row(
+        child: Column(
           children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundColor:
-                  Theme.of(context).colorScheme.primary.withOpacity(0.2),
-              child: Icon(
-                Icons.subscriptions,
-                color: Theme.of(context).colorScheme.primary,
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Monthly Total',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onPrimaryContainer
-                          .withOpacity(0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$currencySymbol${_formatAmount(totalMonthlyCost)}',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            // Top row: Monthly total and subscription count
+            Row(
               children: [
-                Text(
-                  subscriptionCount.toString(),
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                  child: Icon(
+                    Icons.subscriptions,
                     color: Theme.of(context).colorScheme.primary,
+                    size: 28,
                   ),
                 ),
-                Text(
-                  subscriptionCount == 1 ? 'subscription' : 'subscriptions',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onPrimaryContainer
-                        .withOpacity(0.7),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Monthly Total',
+                        style: TextStyle(fontSize: 14, color: labelColor),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$currencySymbol${_formatAmount(totalMonthlyCost)}',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: onContainer,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      subscriptionCount.toString(),
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    Text(
+                      subscriptionCount == 1 ? 'subscription' : 'subscriptions',
+                      style: TextStyle(fontSize: 12, color: labelColor),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Divider
+            Divider(
+              color: onContainer.withOpacity(0.2),
+              height: 1,
+            ),
+            const SizedBox(height: 16),
+            // Bottom row: Remaining this month and next month
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Remaining this month',
+                        style: TextStyle(fontSize: 12, color: labelColor),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$currencySymbol${_formatAmount(remainingThisMonth)}',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: onContainer,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'Next month',
+                        style: TextStyle(fontSize: 12, color: labelColor),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$currencySymbol${_formatAmount(nextMonthTotal)}',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: onContainer,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
