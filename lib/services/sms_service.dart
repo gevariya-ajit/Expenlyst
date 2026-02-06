@@ -122,7 +122,11 @@ class SmsService {
 
   /// Read SMS messages from bank senders
   /// Returns messages from the last [daysToFetch] days
-  Future<List<BankSmsMessage>> readBankSms({int daysToFetch = 365}) async {
+  /// If [sinceDate] is provided, only returns messages after that timestamp
+  Future<List<BankSmsMessage>> readBankSms({
+    int daysToFetch = 365,
+    DateTime? sinceDate,
+  }) async {
     if (!isPlatformSupported) {
       debugPrint('SMS reading not supported on this platform');
       return [];
@@ -139,7 +143,8 @@ class SmsService {
 
       debugPrint('Total SMS messages found: ${messages.length}');
 
-      final cutoffDate = DateTime.now().subtract(Duration(days: daysToFetch));
+      final cutoffDate = sinceDate ??
+          DateTime.now().subtract(Duration(days: daysToFetch));
       final filteredMessages = <BankSmsMessage>[];
 
       for (final msg in messages) {

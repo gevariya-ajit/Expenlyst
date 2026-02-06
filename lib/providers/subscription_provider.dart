@@ -8,6 +8,7 @@ import '../services/subscription_parser_service.dart';
 
 const String _dismissedDuplicatesKey = 'dismissed_duplicate_platforms';
 const String _mergeResolvedUuidsKey = 'merge_resolved_uuids';
+const String _lastScanTimestampKey = 'last_sms_scan_timestamp';
 
 enum ScanStatus {
   idle,
@@ -307,6 +308,7 @@ class SubscriptionProvider with ChangeNotifier {
       SharedPreferences.getInstance().then((prefs) {
         prefs.remove(_dismissedDuplicatesKey);
         prefs.remove(_mergeResolvedUuidsKey);
+        prefs.remove(_lastScanTimestampKey);
       });
     }
     notifyListeners();
@@ -387,6 +389,11 @@ class SubscriptionProvider with ChangeNotifier {
         }
       }
 
+      // Save last scan timestamp
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _lastScanTimestampKey, DateTime.now().toIso8601String());
+
       // Reload subscriptions
       await loadSubscriptions();
 
@@ -396,6 +403,88 @@ class SubscriptionProvider with ChangeNotifier {
       _errorMessage = 'Failed to scan: $e';
       _scanStatus = ScanStatus.error;
       notifyListeners();
+    }
+  }
+
+  /// Silently check for new SMS since last scan and update payment dates.
+  /// Called automatically when the subscriptions screen opens.
+  Future<void> updateFromNewMessages() async {
+    if (!isSmsSupported) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final lastScanStr = prefs.getString(_lastScanTimestampKey);
+
+    // No previous scan — nothing to update incrementally
+    if (lastScanStr == null) {
+      await loadSubscriptions();
+      return;
+    }
+
+    final lastScanDate = DateTime.tryParse(lastScanStr);
+    if (lastScanDate == null) {
+      await loadSubscriptions();
+      return;
+    }
+
+    // Check permission silently — don't prompt
+    bool hasPermissionGranted;
+    try {
+      hasPermissionGranted = await _smsService.hasPermission();
+    } catch (e) {
+      await loadSubscriptions();
+      return;
+    }
+    if (!hasPermissionGranted) {
+      await loadSubscriptions();
+      return;
+    }
+
+    try {
+      final parsed = await _parserService.parseSubscriptions(
+        sinceDate: lastScanDate,
+      );
+
+      if (parsed.isEmpty) {
+        await loadSubscriptions();
+        return;
+      }
+
+      for (final parsedSub in parsed) {
+        final dayOfMonth = parsedSub.paymentDate.day;
+
+        final exists = await _databaseService.smsHashExists(parsedSub.smsHash);
+        if (!exists) {
+          final existingSubscription =
+              await _databaseService.getSubscriptionByPlatformAmountAndDay(
+                  parsedSub.platform, parsedSub.amount, dayOfMonth);
+
+          if (existingSubscription != null) {
+            // Update existing subscription with newer payment date
+            if (parsedSub.paymentDate
+                .isAfter(existingSubscription.lastPaymentDate)) {
+              final updated = existingSubscription.copyWith(
+                lastPaymentDate: parsedSub.paymentDate,
+                nextPaymentDate: parsedSub.toSubscription().nextPaymentDate,
+                bankName: parsedSub.bankName,
+                smsHash: parsedSub.smsHash,
+              );
+              await _databaseService.updateSubscription(updated);
+            }
+          } else {
+            final subscription = parsedSub.toSubscription();
+            await _databaseService.insertSubscription(subscription);
+          }
+        }
+      }
+
+      // Update last scan timestamp
+      await prefs.setString(
+          _lastScanTimestampKey, DateTime.now().toIso8601String());
+
+      await loadSubscriptions();
+    } catch (e) {
+      debugPrint('Error updating from new messages: $e');
+      await loadSubscriptions();
     }
   }
 

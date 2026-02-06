@@ -23,11 +23,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   @override
   void initState() {
     super.initState();
-    // Load subscriptions when screen opens (only if not already scanning)
+    // Check for new SMS and update payment dates when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<SubscriptionProvider>();
       if (provider.scanStatus != ScanStatus.scanning) {
-        provider.loadSubscriptions();
+        provider.updateFromNewMessages();
       }
     });
   }

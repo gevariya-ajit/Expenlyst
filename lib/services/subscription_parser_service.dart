@@ -206,11 +206,16 @@ class SubscriptionParserService {
   );
 
   /// Parse all SMS messages and extract subscriptions
+  /// If [sinceDate] is provided, only parses messages after that timestamp
   Future<List<ParsedSubscription>> parseSubscriptions({
     int daysToFetch = 365,
+    DateTime? sinceDate,
     void Function(int current, int total)? onProgress,
   }) async {
-    final messages = await _smsService.readBankSms(daysToFetch: daysToFetch);
+    final messages = await _smsService.readBankSms(
+      daysToFetch: daysToFetch,
+      sinceDate: sinceDate,
+    );
     final subscriptions = <ParsedSubscription>[];
     final processedHashes = <String>{};
 
