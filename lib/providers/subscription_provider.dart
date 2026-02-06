@@ -182,7 +182,12 @@ class SubscriptionProvider with ChangeNotifier {
 
   /// Merge duplicate subscriptions (keep most recent, delete others)
   /// Marks all participating UUIDs as resolved (persisted in SharedPreferences)
-  Future<void> mergeSubscriptions(List<Subscription> subscriptions) async {
+  /// Optionally overrides frequency and category on the kept subscription.
+  Future<void> mergeSubscriptions(
+    List<Subscription> subscriptions, {
+    SubscriptionFrequency? frequency,
+    SubscriptionCategory? category,
+  }) async {
     if (subscriptions.isEmpty) return;
 
     // Mark all participating UUIDs as resolved so they don't reappear
@@ -192,6 +197,28 @@ class SubscriptionProvider with ChangeNotifier {
         _mergeResolvedUuidsKey, _mergeResolvedUuids.toList());
 
     await _databaseService.mergeSubscriptions(subscriptions);
+
+    // Apply frequency/category overrides to the kept subscription (most recent)
+    if (frequency != null || category != null) {
+      final sorted = List<Subscription>.from(subscriptions)
+        ..sort((a, b) => b.lastPaymentDate.compareTo(a.lastPaymentDate));
+      final kept = sorted.first;
+      if (kept.id != null) {
+        final updated = kept.copyWith(
+          frequency: frequency,
+          category: category,
+          nextPaymentDate: frequency != null
+              ? DateTime(
+                  kept.lastPaymentDate.year,
+                  kept.lastPaymentDate.month + frequency.monthsPerCycle,
+                  kept.lastPaymentDate.day,
+                )
+              : null,
+        );
+        await _databaseService.updateSubscription(updated);
+      }
+    }
+
     await loadSubscriptions();
   }
 

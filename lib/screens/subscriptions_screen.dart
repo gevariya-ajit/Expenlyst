@@ -725,65 +725,120 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     final toRemove = selectedSubs.skip(1).toList();
     final currencySymbol = context.read<SettingsProvider>().currencySymbol;
 
+    var selectedFrequency = toKeep.frequency;
+    var selectedCategory = toKeep.category;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Merge Subscriptions'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Keep:',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Merge Subscriptions'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Keep:',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${toKeep.platform} - $currencySymbol${toKeep.amount.toStringAsFixed(0)} (day ${toKeep.lastPaymentDate.day})',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Remove:',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade600,
+              const SizedBox(height: 4),
+              Text(
+                '${toKeep.platform} - $currencySymbol${toKeep.amount.toStringAsFixed(0)} (day ${toKeep.lastPaymentDate.day})',
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
+              const SizedBox(height: 12),
+              Text(
+                'Remove:',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              ...toRemove.map((s) => Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Text(
+                      '$currencySymbol${s.amount.toStringAsFixed(0)} (day ${s.lastPaymentDate.day})',
+                      style: TextStyle(color: Colors.red.shade700),
+                    ),
+                  )),
+              const SizedBox(height: 16),
+              // Frequency dropdown
+              DropdownButtonFormField<SubscriptionFrequency>(
+                value: selectedFrequency,
+                decoration: const InputDecoration(
+                  labelText: 'Frequency',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: SubscriptionFrequency.values.map((freq) {
+                  return DropdownMenuItem(
+                    value: freq,
+                    child: Text(freq.displayName),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() {
+                      selectedFrequency = value;
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              // Category dropdown
+              DropdownButtonFormField<SubscriptionCategory>(
+                value: selectedCategory,
+                decoration: const InputDecoration(
+                  labelText: 'Category',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: SubscriptionCategory.values.map((cat) {
+                  return DropdownMenuItem(
+                    value: cat,
+                    child: Text(cat.displayName),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setDialogState(() {
+                      selectedCategory = value;
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
             ),
-            const SizedBox(height: 4),
-            ...toRemove.map((s) => Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
-                  child: Text(
-                    '$currencySymbol${s.amount.toStringAsFixed(0)} (day ${s.lastPaymentDate.day})',
-                    style: TextStyle(color: Colors.red.shade700),
-                  ),
-                )),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                provider.mergeSubscriptions(
+                  selectedSubs,
+                  frequency: selectedFrequency,
+                  category: selectedCategory,
+                );
+                // Clean up selection state
+                final platformKey = group.first.platform.toLowerCase();
+                _selectedForMerge.remove(platformKey);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text(
+                          'Merged ${selectedSubs.length} subscriptions')),
+                );
+              },
+              child: const Text('Merge'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              provider.mergeSubscriptions(selectedSubs);
-              // Clean up selection state
-              final platformKey = group.first.platform.toLowerCase();
-              _selectedForMerge.remove(platformKey);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                    content: Text(
-                        'Merged ${selectedSubs.length} subscriptions')),
-              );
-            },
-            child: const Text('Merge'),
-          ),
-        ],
       ),
     );
   }
