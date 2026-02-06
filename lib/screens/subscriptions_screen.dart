@@ -385,13 +385,12 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildCategoryStat(
                     'Monthly', '$currencySymbol${_formatAmount(monthlyCost)}', color),
-                const SizedBox(width: 16),
                 _buildCategoryStat(
                     'Remaining', '$currencySymbol${_formatAmount(remaining)}', color),
-                const SizedBox(width: 16),
                 _buildCategoryStat(
                     'Next mo', '$currencySymbol${_formatAmount(nextMonth)}', color),
               ],
