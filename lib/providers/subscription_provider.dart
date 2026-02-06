@@ -251,10 +251,9 @@ class SubscriptionProvider with ChangeNotifier {
     }
 
     try {
-      // Clear only SMS-scanned subscriptions if doing full refresh
-      // This preserves manually added and cloud-synced subscriptions
+      // Clear all subscriptions if doing full refresh
       if (clearExisting) {
-        await _databaseService.clearSmsScannedSubscriptions();
+        await _databaseService.clearAllSubscriptions();
       }
 
       final parsed = await _parserService.parseSubscriptions(

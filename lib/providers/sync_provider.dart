@@ -484,6 +484,26 @@ class SyncProvider with ChangeNotifier {
     }
   }
 
+  /// Clear all subscriptions from the Google Sheet
+  Future<bool> clearSheetSubscriptions() async {
+    if (!_isSignedIn || _selectedSheetId == null) return false;
+
+    final client = await _authService.getAuthenticatedClient();
+    if (client == null) return false;
+
+    try {
+      return await _sheetsService.clearAllSubscriptionData(
+        client,
+        _selectedSheetId!,
+      );
+    } catch (e) {
+      debugPrint('Error clearing sheet subscriptions: $e');
+      return false;
+    } finally {
+      client.close();
+    }
+  }
+
   /// Trigger sync if auto-sync is enabled
   Future<void> triggerAutoSync() async {
     if (_autoSyncEnabled && _isSignedIn && hasSelectedSheet) {

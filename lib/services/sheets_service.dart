@@ -361,6 +361,30 @@ class SheetsService {
     }
   }
 
+  /// Clear all subscription data from spreadsheet (keeps header row)
+  Future<bool> clearAllSubscriptionData(
+      http.Client client, String spreadsheetId) async {
+    try {
+      final sheetsApi = sheets.SheetsApi(client);
+
+      // Ensure the sheet exists first
+      await _ensureSubscriptionsSheetExists(sheetsApi, spreadsheetId);
+
+      // Clear all data rows (keep header at row 1)
+      await sheetsApi.spreadsheets.values.clear(
+        sheets.ClearValuesRequest(),
+        spreadsheetId,
+        '$_subscriptionsSheetName!A2:K',
+      );
+
+      debugPrint('Cleared all subscription data from sheet');
+      return true;
+    } catch (e) {
+      debugPrint('Error clearing subscription data from sheet: $e');
+      return false;
+    }
+  }
+
   /// Write subscriptions to spreadsheet (append or update)
   Future<bool> writeSubscriptions(
     http.Client client,

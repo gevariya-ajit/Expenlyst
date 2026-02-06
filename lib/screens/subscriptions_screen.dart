@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/subscription.dart';
 import '../providers/subscription_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/sync_provider.dart';
 import '../widgets/subscription_card.dart';
 
 class SubscriptionsScreen extends StatefulWidget {
@@ -15,6 +16,8 @@ class SubscriptionsScreen extends StatefulWidget {
 
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   bool _showAllSubscriptions = false;
+  // Track selected subscription UUIDs per platform for selective merge
+  final Map<String, Set<String>> _selectedForMerge = {};
 
   @override
   void initState() {
@@ -35,12 +38,13 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         title: const Text('Subscriptions'),
         actions: [
           if (Platform.isAndroid)
-            GestureDetector(
+            InkWell(
+              onTap: () => _scanSms(context, clearExisting: false),
               onLongPress: () => _scanSms(context, clearExisting: true),
-              child: IconButton(
-                icon: const Icon(Icons.refresh),
-                tooltip: 'Scan SMS (long press to clear all)',
-                onPressed: () => _scanSms(context, clearExisting: false),
+              customBorder: const CircleBorder(),
+              child: const Padding(
+                padding: EdgeInsets.all(8.0),
+                child: Icon(Icons.refresh),
               ),
             ),
         ],
@@ -468,10 +472,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     SubscriptionProvider provider,
   ) {
     final platform = group.first.platform;
-    // Build description showing each subscription's amount and day
-    final details = group
-        .map((s) => '$currencySymbol${s.amount.toStringAsFixed(0)} (day ${s.lastPaymentDate.day})')
-        .join(', ');
+    final platformKey = platform.toLowerCase();
+
+    // Initialize selection set if not present
+    _selectedForMerge.putIfAbsent(platformKey, () => {});
+    final selected = _selectedForMerge[platformKey]!;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -500,35 +505,98 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
             Text(
-              details,
-              style: const TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Merge to keep only the most recent one.',
+              'Select duplicates to merge (keeps most recent):',
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.grey.shade600,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            // Each subscription as a selectable row
+            ...group.map((sub) {
+              final isSelected = selected.contains(sub.uuid);
+              return InkWell(
+                onTap: () {
+                  setState(() {
+                    if (isSelected) {
+                      selected.remove(sub.uuid);
+                    } else {
+                      selected.add(sub.uuid);
+                    }
+                  });
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Checkbox(
+                          value: isSelected,
+                          onChanged: (val) {
+                            setState(() {
+                              if (val == true) {
+                                selected.add(sub.uuid);
+                              } else {
+                                selected.remove(sub.uuid);
+                              }
+                            });
+                          },
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$currencySymbol${sub.amount.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '(day ${sub.lastPaymentDate.day})',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: () => provider.dismissDuplicateSuggestion(group),
-                  child: const Text('Keep All'),
+                  onPressed: () {
+                    _selectedForMerge.remove(platformKey);
+                    provider.dismissDuplicateSuggestion(group);
+                  },
+                  child: const Text('Dismiss'),
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
-                  onPressed: () => _confirmMerge(context, group, provider),
+                  onPressed: selected.length >= 2
+                      ? () => _confirmMergeSelected(
+                          context, group, selected, provider)
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.amber.shade700,
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
                   ),
-                  child: const Text('Merge'),
+                  child: Text(selected.length >= 2
+                      ? 'Merge ${selected.length} Selected'
+                      : 'Select 2+ to Merge'),
                 ),
               ],
             ),
@@ -538,15 +606,20 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
-  void _confirmMerge(
+  void _confirmMergeSelected(
     BuildContext context,
     List<Subscription> group,
+    Set<String> selectedUuids,
     SubscriptionProvider provider,
   ) {
+    final selectedSubs =
+        group.where((s) => selectedUuids.contains(s.uuid)).toList();
+    if (selectedSubs.length < 2) return;
+
     // Sort to find which one will be kept (most recent)
-    final sorted = List<Subscription>.from(group)
-      ..sort((a, b) => b.lastPaymentDate.compareTo(a.lastPaymentDate));
-    final toKeep = sorted.first;
+    selectedSubs.sort((a, b) => b.lastPaymentDate.compareTo(a.lastPaymentDate));
+    final toKeep = selectedSubs.first;
+    final toRemove = selectedSubs.skip(1).toList();
     final currencySymbol = context.read<SettingsProvider>().currencySymbol;
 
     showDialog(
@@ -558,13 +631,33 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Will keep: ${toKeep.platform} ($currencySymbol${toKeep.amount.toStringAsFixed(0)})',
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              'Keep:',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade600,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text(
-              'Will remove ${group.length - 1} other subscription(s).',
+              '${toKeep.platform} - $currencySymbol${toKeep.amount.toStringAsFixed(0)} (day ${toKeep.lastPaymentDate.day})',
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
+            const SizedBox(height: 12),
+            Text(
+              'Remove:',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            ...toRemove.map((s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    '$currencySymbol${s.amount.toStringAsFixed(0)} (day ${s.lastPaymentDate.day})',
+                    style: TextStyle(color: Colors.red.shade700),
+                  ),
+                )),
           ],
         ),
         actions: [
@@ -575,9 +668,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.of(ctx).pop();
-              provider.mergeSubscriptions(group);
+              provider.mergeSubscriptions(selectedSubs);
+              // Clean up selection state
+              final platformKey = group.first.platform.toLowerCase();
+              _selectedForMerge.remove(platformKey);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Subscriptions merged')),
+                SnackBar(
+                    content: Text(
+                        'Merged ${selectedSubs.length} subscriptions')),
               );
             },
             child: const Text('Merge'),
@@ -598,6 +696,14 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         duration: const Duration(seconds: 1),
       ),
     );
+
+    // Clear subscriptions from Google Sheet before full rescan
+    if (clearExisting) {
+      final syncProvider = context.read<SyncProvider>();
+      if (syncProvider.isSignedIn && syncProvider.hasSelectedSheet) {
+        await syncProvider.clearSheetSubscriptions();
+      }
+    }
 
     await provider.scanSms(clearExisting: clearExisting);
 
