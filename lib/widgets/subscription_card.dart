@@ -38,6 +38,11 @@ class SubscriptionCard extends StatelessWidget {
     'Lionsgate Play': Icons.theaters,
     'Discovery+': Icons.explore,
     'Audible': Icons.headphones,
+    // Matrimony platforms
+    'Shaadi': Icons.favorite,
+    'Bharatmatrimony': Icons.favorite_border,
+    'Jeevansathi': Icons.people,
+    'Brahminmatrimony': Icons.temple_hindu,
   };
 
   /// Platform colors
@@ -60,14 +65,25 @@ class SubscriptionCard extends StatelessWidget {
     'Lionsgate Play': Color(0xFFFBB03B),
     'Discovery+': Color(0xFF003366),
     'Audible': Color(0xFFFF9900),
+    // Matrimony platforms
+    'Shaadi': Color(0xFFE91E63),
+    'Bharatmatrimony': Color(0xFFFF5722),
+    'Jeevansathi': Color(0xFFE91E63),
+    'Brahminmatrimony': Color(0xFFFF9800),
   };
 
   static IconData getPlatformIcon(String platform) {
-    return platformIcons[platform] ?? Icons.subscriptions;
+    return platformIcons[platform] ??
+        (platform.toLowerCase().contains('matrimony')
+            ? Icons.favorite
+            : Icons.subscriptions);
   }
 
   static Color getPlatformColor(String platform) {
-    return platformColors[platform] ?? const Color(0xFF9E9E9E);
+    return platformColors[platform] ??
+        (platform.toLowerCase().contains('matrimony')
+            ? const Color(0xFFE91E63)
+            : const Color(0xFF9E9E9E));
   }
 
   @override

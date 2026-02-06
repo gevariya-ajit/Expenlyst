@@ -10,6 +10,7 @@ class ParsedSubscription {
   final double amount;
   final DateTime paymentDate;
   final SubscriptionFrequency frequency;
+  final SubscriptionCategory category;
   final String? bankName;
   final String smsHash;
 
@@ -18,14 +19,27 @@ class ParsedSubscription {
     required this.amount,
     required this.paymentDate,
     required this.frequency,
+    required this.category,
     this.bankName,
     required this.smsHash,
   });
 
+  ParsedSubscription copyWith({SubscriptionFrequency? frequency}) {
+    return ParsedSubscription(
+      platform: platform,
+      amount: amount,
+      paymentDate: paymentDate,
+      frequency: frequency ?? this.frequency,
+      category: category,
+      bankName: bankName,
+      smsHash: smsHash,
+    );
+  }
+
   Subscription toSubscription() {
     return Subscription(
       platform: platform,
-      category: SubscriptionCategory.ott,
+      category: category,
       amount: amount,
       frequency: frequency,
       lastPaymentDate: paymentDate,
@@ -92,6 +106,19 @@ class SubscriptionParserService {
     'Lionsgate Play': ['lionsgate', 'lionsgateplay'],
     'Discovery+': ['discovery+', 'discovery plus', 'discoveryplus'],
     'Audible': ['audible', 'audible.com', 'audible.in'],
+    // Matrimony platforms
+    'Shaadi': ['shaadi', 'shaadi.com'],
+    'Bharatmatrimony': ['bharatmatrimony', 'bharat matrimony', 'bharatmatrimony.com'],
+    'Jeevansathi': ['jeevansathi', 'jeevan sathi', 'jeevansathi.com'],
+    'Brahminmatrimony': ['brahminmatrimony', 'brahmin matrimony'],
+  };
+
+  /// Matrimony platforms for category detection
+  static const Set<String> matrimonyPlatforms = {
+    'Shaadi',
+    'Bharatmatrimony',
+    'Jeevansathi',
+    'Brahminmatrimony',
   };
 
   /// Known pricing for frequency detection (INR)
@@ -198,6 +225,49 @@ class SubscriptionParserService {
       }
     }
 
+    // Date-interval-based frequency detection (overrides amount heuristic)
+    // Group by platform + amount to find recurring payments
+    final groups = <String, List<ParsedSubscription>>{};
+    for (final sub in subscriptions) {
+      final key = '${sub.platform}_${sub.amount.toStringAsFixed(2)}';
+      groups.putIfAbsent(key, () => []).add(sub);
+    }
+    for (final entry in groups.entries) {
+      final group = entry.value;
+      if (group.length < 2) continue;
+
+      // Sort by date ascending for interval calculation
+      group.sort((a, b) => a.paymentDate.compareTo(b.paymentDate));
+
+      // Calculate average interval between consecutive payments
+      var totalDays = 0;
+      for (var i = 1; i < group.length; i++) {
+        totalDays +=
+            group[i].paymentDate.difference(group[i - 1].paymentDate).inDays;
+      }
+      final avgDays = totalDays / (group.length - 1);
+
+      // Map interval to frequency
+      SubscriptionFrequency inferredFreq;
+      if (avgDays <= 45) {
+        inferredFreq = SubscriptionFrequency.monthly;
+      } else if (avgDays <= 120) {
+        inferredFreq = SubscriptionFrequency.quarterly;
+      } else if (avgDays <= 240) {
+        inferredFreq = SubscriptionFrequency.halfYearly;
+      } else {
+        inferredFreq = SubscriptionFrequency.yearly;
+      }
+
+      // Override frequency for all items in the group
+      for (var i = 0; i < subscriptions.length; i++) {
+        if (subscriptions[i].platform == group.first.platform &&
+            subscriptions[i].amount == group.first.amount) {
+          subscriptions[i] = subscriptions[i].copyWith(frequency: inferredFreq);
+        }
+      }
+    }
+
     // Sort by payment date (most recent first)
     subscriptions.sort((a, b) => b.paymentDate.compareTo(a.paymentDate));
 
@@ -270,6 +340,7 @@ class SubscriptionParserService {
       amount: amount,
       paymentDate: date,
       frequency: frequency,
+      category: _detectCategory(platform),
       bankName: bankName,
       smsHash: smsHash,
     );
@@ -299,6 +370,7 @@ class SubscriptionParserService {
       amount: amount,
       paymentDate: date,
       frequency: frequency,
+      category: _detectCategory(platform),
       bankName: bankName,
       smsHash: smsHash,
     );
@@ -328,6 +400,7 @@ class SubscriptionParserService {
       amount: amount,
       paymentDate: date,
       frequency: frequency,
+      category: _detectCategory(platform),
       bankName: bankName,
       smsHash: smsHash,
     );
@@ -357,6 +430,7 @@ class SubscriptionParserService {
       amount: amount,
       paymentDate: date,
       frequency: frequency,
+      category: _detectCategory(platform),
       bankName: bankName,
       smsHash: smsHash,
     );
@@ -384,6 +458,7 @@ class SubscriptionParserService {
       amount: amount,
       paymentDate: msgDate,
       frequency: frequency,
+      category: _detectCategory(platform),
       bankName: bankName,
       smsHash: smsHash,
     );
@@ -413,6 +488,7 @@ class SubscriptionParserService {
       amount: amount,
       paymentDate: date,
       frequency: frequency,
+      category: _detectCategory(platform),
       bankName: bankName,
       smsHash: smsHash,
     );
@@ -442,6 +518,7 @@ class SubscriptionParserService {
       amount: amount,
       paymentDate: date,
       frequency: frequency,
+      category: _detectCategory(platform),
       bankName: bankName,
       smsHash: smsHash,
     );
@@ -466,6 +543,12 @@ class SubscriptionParserService {
       if (normalized == platform.toLowerCase()) {
         return platform;
       }
+    }
+
+    // Accept any platform containing "matrimony" in the name
+    if (normalized.contains('matrimony')) {
+      final cleaned = raw.trim();
+      return cleaned[0].toUpperCase() + cleaned.substring(1).toLowerCase();
     }
 
     // Return cleaned-up name if it looks like a valid platform (all caps in original)
@@ -509,6 +592,17 @@ class SubscriptionParserService {
     } catch (e) {
       return null;
     }
+  }
+
+  /// Detect subscription category based on platform name
+  SubscriptionCategory _detectCategory(String platform) {
+    if (matrimonyPlatforms.contains(platform)) {
+      return SubscriptionCategory.matrimony;
+    }
+    if (platform.toLowerCase().contains('matrimony')) {
+      return SubscriptionCategory.matrimony;
+    }
+    return SubscriptionCategory.ott;
   }
 
   /// Detect subscription frequency based on platform and amount

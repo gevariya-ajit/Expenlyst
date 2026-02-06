@@ -96,6 +96,51 @@ class SubscriptionProvider with ChangeNotifier {
     });
   }
 
+  /// Calculate monthly cost for a specific category
+  double monthlyCostForCategory(SubscriptionCategory category) {
+    return activeSubscriptions
+        .where((s) => s.category == category)
+        .fold(0.0, (sum, sub) => sum + sub.monthlyCost);
+  }
+
+  /// Calculate remaining this month for a specific category
+  double remainingThisMonthForCategory(SubscriptionCategory category) {
+    final now = DateTime.now();
+    return activeSubscriptions.where((s) => s.category == category).fold(0.0,
+        (sum, sub) {
+      final nextDate = sub.nextPaymentDate;
+      if (nextDate == null) return sum;
+      if (nextDate.year == now.year &&
+          nextDate.month == now.month &&
+          nextDate.day >= now.day) {
+        return sum + sub.amount;
+      }
+      return sum;
+    });
+  }
+
+  /// Calculate next month total for a specific category
+  double nextMonthTotalForCategory(SubscriptionCategory category) {
+    final now = DateTime.now();
+    final nextMonth = now.month == 12 ? 1 : now.month + 1;
+    final nextMonthYear = now.month == 12 ? now.year + 1 : now.year;
+
+    return activeSubscriptions.where((s) => s.category == category).fold(0.0,
+        (sum, sub) {
+      final nextDate = sub.nextPaymentDate;
+      if (nextDate == null) return sum;
+      if (nextDate.year == nextMonthYear && nextDate.month == nextMonth) {
+        return sum + sub.amount;
+      }
+      if (sub.frequency == SubscriptionFrequency.monthly &&
+          nextDate.year == now.year &&
+          nextDate.month == now.month) {
+        return sum + sub.amount;
+      }
+      return sum;
+    });
+  }
+
   /// Get subscriptions grouped by category
   Map<SubscriptionCategory, List<Subscription>> get subscriptionsByCategory {
     final grouped = <SubscriptionCategory, List<Subscription>>{};

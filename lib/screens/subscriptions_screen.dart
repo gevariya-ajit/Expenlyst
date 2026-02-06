@@ -16,6 +16,7 @@ class SubscriptionsScreen extends StatefulWidget {
 
 class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   bool _showAllSubscriptions = false;
+  bool _showAllMatrimony = false;
   // Track selected subscription UUIDs per platform for selective merge
   final Map<String, Set<String>> _selectedForMerge = {};
 
@@ -198,7 +199,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
               ],
               const SizedBox(height: 16),
               Text(
-                'Looking for OTT subscriptions...',
+                'Looking for subscriptions...',
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey[500],
@@ -239,12 +240,42 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
         const SizedBox(height: 8),
 
-        // Subscriptions card
-        _buildSubscriptionsCard(
-          context,
-          subscriptions,
-          settingsProvider.currencySymbol,
-          provider,
+        // OTT subscriptions card
+        _buildCategoryCard(
+          context: context,
+          subscriptions: subscriptions,
+          currencySymbol: settingsProvider.currencySymbol,
+          provider: provider,
+          category: SubscriptionCategory.ott,
+          title: 'OTT',
+          icon: Icons.live_tv,
+          color: Theme.of(context).colorScheme.primary,
+          backgroundColor: const Color(0xFFE8F5F3),
+          showAll: _showAllSubscriptions,
+          onToggleShowAll: () {
+            setState(() {
+              _showAllSubscriptions = !_showAllSubscriptions;
+            });
+          },
+        ),
+
+        // Matrimony subscriptions card
+        _buildCategoryCard(
+          context: context,
+          subscriptions: subscriptions,
+          currencySymbol: settingsProvider.currencySymbol,
+          provider: provider,
+          category: SubscriptionCategory.matrimony,
+          title: 'Matrimony',
+          icon: Icons.favorite,
+          color: const Color(0xFFE91E63),
+          backgroundColor: const Color(0xFFFCE4EC),
+          showAll: _showAllMatrimony,
+          onToggleShowAll: () {
+            setState(() {
+              _showAllMatrimony = !_showAllMatrimony;
+            });
+          },
         ),
 
         // Inactive subscriptions
@@ -288,16 +319,22 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     );
   }
 
-  /// Build OTT subscriptions card
-  Widget _buildSubscriptionsCard(
-    BuildContext context,
-    List<Subscription> subscriptions,
-    String currencySymbol,
-    SubscriptionProvider provider,
-  ) {
-    // Filter only OTT subscriptions
-    final ottSubscriptions = subscriptions
-        .where((s) => s.category == SubscriptionCategory.ott)
+  /// Build a category-specific subscriptions card
+  Widget _buildCategoryCard({
+    required BuildContext context,
+    required List<Subscription> subscriptions,
+    required String currencySymbol,
+    required SubscriptionProvider provider,
+    required SubscriptionCategory category,
+    required String title,
+    required IconData icon,
+    required Color color,
+    required Color backgroundColor,
+    required bool showAll,
+    required VoidCallback onToggleShowAll,
+  }) {
+    final filtered = subscriptions
+        .where((s) => s.category == category)
         .toList()
       ..sort((a, b) {
         final aDate = a.nextPaymentDate ?? DateTime(2100);
@@ -305,21 +342,22 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         return aDate.compareTo(bDate);
       });
 
-    // If no OTT subscriptions, don't show the card
-    if (ottSubscriptions.isEmpty) {
+    if (filtered.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    // Show 4 items by default, all when expanded
     const initialCount = 4;
-    final hasMore = ottSubscriptions.length > initialCount;
-    final displayList = _showAllSubscriptions
-        ? ottSubscriptions
-        : ottSubscriptions.take(initialCount).toList();
+    final hasMore = filtered.length > initialCount;
+    final displayList =
+        showAll ? filtered : filtered.take(initialCount).toList();
+
+    final monthlyCost = provider.monthlyCostForCategory(category);
+    final remaining = provider.remainingThisMonthForCategory(category);
+    final nextMonth = provider.nextMonthTotalForCategory(category);
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: const Color(0xFFE8F5F3),
+      color: backgroundColor,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -327,22 +365,35 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         children: [
           // Header
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
             child: Row(
               children: [
-                Icon(
-                  Icons.live_tv,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 20,
-                ),
+                Icon(icon, color: color, size: 20),
                 const SizedBox(width: 8),
-                const Text(
-                  'OTT',
-                  style: TextStyle(
+                Text(
+                  '$title (${filtered.length})',
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+              ],
+            ),
+          ),
+
+          // Category cost breakdown
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                _buildCategoryStat(
+                    'Monthly', '$currencySymbol${_formatAmount(monthlyCost)}', color),
+                const SizedBox(width: 16),
+                _buildCategoryStat(
+                    'Remaining', '$currencySymbol${_formatAmount(remaining)}', color),
+                const SizedBox(width: 16),
+                _buildCategoryStat(
+                    'Next mo', '$currencySymbol${_formatAmount(nextMonth)}', color),
               ],
             ),
           ),
@@ -371,11 +422,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           // See all / Show less
           if (hasMore)
             InkWell(
-              onTap: () {
-                setState(() {
-                  _showAllSubscriptions = !_showAllSubscriptions;
-                });
-              },
+              onTap: onToggleShowAll,
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -388,11 +435,11 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    _showAllSubscriptions
+                    showAll
                         ? 'Show less'
-                        : 'See all (${ottSubscriptions.length})',
+                        : 'See all (${filtered.length})',
                     style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
+                      color: color,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -430,7 +477,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
             const SizedBox(height: 16),
             Text(
               isAndroid
-                  ? 'Scan your bank SMS to automatically detect OTT subscriptions like Netflix, Amazon Prime, and more.'
+                  ? 'Scan your bank SMS to automatically detect subscriptions like Netflix, Amazon Prime, Shaadi, and more.'
                   : 'Add your subscriptions manually to track your recurring expenses.',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -1004,6 +1051,33 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildCategoryStat(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatAmount(double amount) {
+    if (amount == amount.roundToDouble()) {
+      return amount.toInt().toString();
+    }
+    return amount.toStringAsFixed(2);
   }
 
   DateTime _calculateNextPaymentDate(
