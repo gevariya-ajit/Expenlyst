@@ -127,7 +127,17 @@ class SubscriptionProvider with ChangeNotifier {
   }
 
   /// Merge duplicate subscriptions (keep most recent, delete others)
+  /// Auto-dismisses the platform from merge suggestions (persisted)
   Future<void> mergeSubscriptions(List<Subscription> subscriptions) async {
+    if (subscriptions.isEmpty) return;
+
+    // Auto-dismiss this platform from merge suggestions
+    final platform = subscriptions.first.platform.toLowerCase();
+    _dismissedDuplicatePlatforms.add(platform);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+        _dismissedDuplicatesKey, _dismissedDuplicatePlatforms.toList());
+
     await _databaseService.mergeSubscriptions(subscriptions);
     await loadSubscriptions();
   }

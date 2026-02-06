@@ -18,9 +18,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   bool _showAllSubscriptions = false;
   // Track selected subscription UUIDs per platform for selective merge
   final Map<String, Set<String>> _selectedForMerge = {};
-  // Track UUIDs that were part of a merge (both kept and deleted)
-  // so they don't reappear in the merge suggestion card
-  final Set<String> _mergeResolvedUuids = {};
 
   @override
   void initState() {
@@ -221,20 +218,15 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     return ListView(
       padding: const EdgeInsets.only(bottom: 80),
       children: [
-        // Merge suggestion cards (filter out already-resolved merge UUIDs)
+        // Merge suggestion cards
         if (provider.potentialDuplicates.isNotEmpty)
-          ...provider.potentialDuplicates.map((group) {
-            final filtered = group
-                .where((s) => !_mergeResolvedUuids.contains(s.uuid))
-                .toList();
-            if (filtered.length < 2) return const SizedBox.shrink();
-            return _buildMergeSuggestionCard(
-              context,
-              filtered,
-              settingsProvider.currencySymbol,
-              provider,
-            );
-          }),
+          ...provider.potentialDuplicates.map((group) =>
+              _buildMergeSuggestionCard(
+                context,
+                group,
+                settingsProvider.currencySymbol,
+                provider,
+              )),
 
         // Summary card
         SubscriptionSummaryCard(
@@ -732,10 +724,6 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.of(ctx).pop();
-              // Mark all selected UUIDs as resolved so they
-              // disappear from the merge card
-              _mergeResolvedUuids
-                  .addAll(selectedSubs.map((s) => s.uuid));
               provider.mergeSubscriptions(selectedSubs);
               // Clean up selection state
               final platformKey = group.first.platform.toLowerCase();
@@ -756,9 +744,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   Future<void> _scanSms(BuildContext context, {bool clearExisting = false}) async {
     final provider = context.read<SubscriptionProvider>();
 
-    // Reset merge state on new scan
+    // Reset merge selection state on new scan
     _selectedForMerge.clear();
-    _mergeResolvedUuids.clear();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
