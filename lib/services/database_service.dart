@@ -174,7 +174,10 @@ class DatabaseService {
 
   Future<List<Expense>> getWeekExpensesForDate(DateTime date) async {
     final db = await database;
-    final startOfWeek = date.subtract(Duration(days: date.weekday - 1));
+    // Week runs Sunday to Saturday
+    // Dart weekday: 1=Mon..7=Sun. Convert so Sun=0, Mon=1, ..., Sat=6
+    final daysFromSunday = date.weekday % 7;
+    final startOfWeek = date.subtract(Duration(days: daysFromSunday));
     final startOfWeekDay = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
     final endOfWeek = startOfWeekDay.add(const Duration(days: 7));
 

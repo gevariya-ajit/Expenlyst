@@ -41,10 +41,11 @@ class ExpenseProvider with ChangeNotifier {
 
   double get weeklyAverage {
     if (_weekExpenses.isEmpty) return 0.0;
-    // Calculate days from start of week to selected date (or today if selected date is in future)
+    // Calculate days from start of week (Sunday) to selected date
     final now = DateTime.now();
     final effectiveDate = _selectedDate.isAfter(now) ? now : _selectedDate;
-    final daysIntoWeek = effectiveDate.weekday;
+    // Sun=1, Mon=2, ..., Sat=7 (days into the Sunday-start week)
+    final daysIntoWeek = (effectiveDate.weekday % 7) + 1;
     final total = _weekExpenses.fold(0.0, (sum, expense) => sum + expense.amount);
     return total / daysIntoWeek;
   }
