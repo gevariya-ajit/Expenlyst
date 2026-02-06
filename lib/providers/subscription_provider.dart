@@ -7,6 +7,7 @@ import '../services/sms_service.dart';
 import '../services/subscription_parser_service.dart';
 
 const String _dismissedDuplicatesKey = 'dismissed_duplicate_platforms';
+const String _mergeResolvedUuidsKey = 'merge_resolved_uuids';
 
 enum ScanStatus {
   idle,
@@ -25,6 +26,7 @@ class SubscriptionProvider with ChangeNotifier {
   List<Subscription> _subscriptions = [];
   List<List<Subscription>> _potentialDuplicates = [];
   Set<String> _dismissedDuplicatePlatforms = {};
+  Set<String> _mergeResolvedUuids = {};
   ScanStatus _scanStatus = ScanStatus.idle;
   String? _errorMessage;
   int _scanProgress = 0;
@@ -106,18 +108,25 @@ class SubscriptionProvider with ChangeNotifier {
   /// Load subscriptions from database
   Future<void> loadSubscriptions() async {
     try {
-      // Load dismissed platforms from SharedPreferences
+      // Load dismissed platforms and merge-resolved UUIDs from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       _dismissedDuplicatePlatforms =
           (prefs.getStringList(_dismissedDuplicatesKey) ?? []).toSet();
+      _mergeResolvedUuids =
+          (prefs.getStringList(_mergeResolvedUuidsKey) ?? []).toSet();
 
       _subscriptions = await _databaseService.getAllSubscriptions();
       final allDuplicates = await _databaseService.findPotentialDuplicates();
 
-      // Filter out dismissed platforms
+      // Filter out dismissed platforms, then filter out merge-resolved UUIDs,
+      // and only keep groups that still have 2+ items
       _potentialDuplicates = allDuplicates
           .where((group) => !_dismissedDuplicatePlatforms
               .contains(group.first.platform.toLowerCase()))
+          .map((group) => group
+              .where((s) => !_mergeResolvedUuids.contains(s.uuid))
+              .toList())
+          .where((group) => group.length >= 2)
           .toList();
 
       notifyListeners();
@@ -127,16 +136,15 @@ class SubscriptionProvider with ChangeNotifier {
   }
 
   /// Merge duplicate subscriptions (keep most recent, delete others)
-  /// Auto-dismisses the platform from merge suggestions (persisted)
+  /// Marks all participating UUIDs as resolved (persisted in SharedPreferences)
   Future<void> mergeSubscriptions(List<Subscription> subscriptions) async {
     if (subscriptions.isEmpty) return;
 
-    // Auto-dismiss this platform from merge suggestions
-    final platform = subscriptions.first.platform.toLowerCase();
-    _dismissedDuplicatePlatforms.add(platform);
+    // Mark all participating UUIDs as resolved so they don't reappear
+    _mergeResolvedUuids.addAll(subscriptions.map((s) => s.uuid));
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
-        _dismissedDuplicatesKey, _dismissedDuplicatePlatforms.toList());
+        _mergeResolvedUuidsKey, _mergeResolvedUuids.toList());
 
     await _databaseService.mergeSubscriptions(subscriptions);
     await loadSubscriptions();
@@ -221,10 +229,12 @@ class SubscriptionProvider with ChangeNotifier {
     if (clearExisting) {
       _subscriptions = []; // Only clear list if doing full refresh
       _potentialDuplicates = [];
-      // Also clear dismissed duplicate preferences so user sees suggestions again
+      // Clear dismissed + merge-resolved preferences so user sees suggestions again
       _dismissedDuplicatePlatforms.clear();
+      _mergeResolvedUuids.clear();
       SharedPreferences.getInstance().then((prefs) {
         prefs.remove(_dismissedDuplicatesKey);
+        prefs.remove(_mergeResolvedUuidsKey);
       });
     }
     notifyListeners();
